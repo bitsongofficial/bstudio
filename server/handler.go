@@ -3,9 +3,9 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/angelorc/go-uploader/models"
-	"github.com/angelorc/go-uploader/services"
-	"github.com/angelorc/go-uploader/transcoder"
+	"github.com/bitsongofficial/bitsong-media-server/models"
+	"github.com/bitsongofficial/bitsong-media-server/services"
+	"github.com/bitsongofficial/bitsong-media-server/transcoder"
 	"github.com/nfnt/resize"
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"os"
 
-	_ "github.com/angelorc/go-uploader/server/docs"
+	_ "github.com/bitsongofficial/bitsong-media-server/server/docs"
 	"github.com/gorilla/mux"
 	httpswagger "github.com/swaggo/http-swagger"
 )

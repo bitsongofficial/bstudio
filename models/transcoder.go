@@ -3,7 +3,7 @@ package models
 import (
 	"context"
 	"fmt"
-	"github.com/angelorc/go-uploader/db"
+	"github.com/bitsongofficial/bitsong-media-server/db"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"

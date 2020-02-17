@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/angelorc/go-uploader/models"
-	"github.com/angelorc/go-uploader/transcoder"
+	"github.com/bitsongofficial/bitsong-media-server/models"
+	"github.com/bitsongofficial/bitsong-media-server/transcoder"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 	"github.com/rs/zerolog"
@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/angelorc/go-uploader/server"
+	"github.com/bitsongofficial/bitsong-media-server/server"
 )
 
 const (

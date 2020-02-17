@@ -1,8 +1,8 @@
 package db_test
 
 import (
-	"github.com/angelorc/go-uploader/db"
-	"github.com/angelorc/go-uploader/models"
+	"github.com/bitsongofficial/bitsong-media-server/db"
+	"github.com/bitsongofficial/bitsong-media-server/models"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"testing"
@@ -28,7 +28,7 @@ func TestGet(t *testing.T) {
 	require.NoError(t, err)
 
 	t2 := &models.Transcoder{
-		ID:         transcoder.ID,
+		ID: transcoder.ID,
 	}
 
 	res, err := t2.Get()
@@ -58,7 +58,7 @@ func TestDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	t2 := &models.Transcoder{
-		ID:         transcoder.ID,
+		ID: transcoder.ID,
 	}
 
 	_, err = t2.Get()

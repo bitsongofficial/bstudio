@@ -3,7 +3,7 @@ package transcoder
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/angelorc/go-uploader/services"
+	"github.com/bitsongofficial/bitsong-media-server/services"
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"io/ioutil"
@@ -29,7 +29,7 @@ type Transcoder struct {
 func NewTranscoder(u *services.Uploader, id primitive.ObjectID) *Transcoder {
 	return &Transcoder{
 		Uploader: u,
-		Id: id,
+		Id:       id,
 		Format: FFProbeFormat{
 			ready: false,
 		},
