@@ -5,12 +5,16 @@ go 1.13
 require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/cpuguy83/go-md2man/v2 v2.0.0 // indirect
-	github.com/dgraph-io/badger/v2 v2.0.1
 	github.com/go-openapi/spec v0.19.6 // indirect
 	github.com/go-openapi/swag v0.19.7 // indirect
 	github.com/google/uuid v1.1.1
 	github.com/gorilla/mux v1.7.4
-	github.com/ipfs/go-ipfs-api v0.0.3
+	github.com/ipfs/go-datastore v0.0.5
+	github.com/ipfs/go-ipfs v0.4.23
+	github.com/ipfs/go-ipfs-config v0.0.3
+	github.com/ipfs/go-ipfs-files v0.0.3
+	github.com/ipfs/go-path v0.0.4
+	github.com/ipfs/interface-go-ipfs-core v0.0.8
 	github.com/mailru/easyjson v0.7.0 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/rs/cors v1.7.0
