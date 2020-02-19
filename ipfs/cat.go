@@ -1,6 +1,6 @@
 package ipfs
 
-import (
+/*import (
 	"context"
 	"errors"
 	files "github.com/ipfs/go-ipfs-files"
@@ -36,3 +36,4 @@ func Cat(n *core.IpfsNode, pth string, timeout time.Duration) ([]byte, error) {
 
 	return ioutil.ReadAll(r)
 }
+*/

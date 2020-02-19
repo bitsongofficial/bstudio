@@ -1,6 +1,6 @@
 package ipfs
 
-import (
+/*import (
 	files "github.com/ipfs/go-ipfs-files"
 	"github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/coreunix"
@@ -36,3 +36,4 @@ func addAndPin(n *core.IpfsNode, root string) (rootHash string, err error) {
 	}
 	return node.Cid().String(), nil
 }
+*/

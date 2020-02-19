@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"github.com/bitsongofficial/bitsong-media-server/ipfs"
 	"github.com/bitsongofficial/bitsong-media-server/models"
 	"github.com/bitsongofficial/bitsong-media-server/transcoder"
 	"github.com/gorilla/mux"
@@ -64,6 +66,12 @@ func getStartCmd() *cobra.Command {
 					return err
 				}
 			}
+
+			// Start IPFS
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			ipfs.Start(ctx)
 
 			// make a queue with a capacity of 1 transcoder.
 			queue := make(chan *transcoder.Transcoder, 1)
