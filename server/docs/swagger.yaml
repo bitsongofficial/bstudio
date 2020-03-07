@@ -8,6 +8,10 @@ definitions:
         type: string
       created_at:
         type: string
+      list:
+        type: string
+      original:
+        type: string
       percentage:
         type: integer
       upload_id:

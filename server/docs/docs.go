@@ -156,6 +156,12 @@ var doc = `{
                 "created_at": {
                     "type": "string"
                 },
+                "list": {
+                    "type": "string"
+                },
+                "original": {
+                    "type": "string"
+                },
                 "percentage": {
                     "type": "integer"
                 },

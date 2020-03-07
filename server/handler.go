@@ -263,14 +263,7 @@ func getTranscodeHandler() http.HandlerFunc {
 	}
 }
 
-// @Summary Get ipfs media content
-// @Description Get media content from IPFS by CID.
-// @Tags ipfs
-// @Produce application/octet-stream
-// @Param cid path string true "CID"
-// @Success 200 {object} file
-// @Failure 400 {object} server.ErrorResponse "Failure to serve media content"
-// @Router /ipfs/{cid} [get]
+// TODO: add swagger ??
 func getIpfsGatewayHandler(ipfsNode icore.CoreAPI) http.HandlerFunc {
 	// similar to https://github.com/ipfs/go-ipfs/blob/master/core/corehttp/gateway_handler.go
 	return func(w http.ResponseWriter, r *http.Request) {
