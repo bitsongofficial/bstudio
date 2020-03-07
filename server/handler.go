@@ -1,17 +1,23 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/bitsongofficial/bitsong-media-server/models"
 	"github.com/bitsongofficial/bitsong-media-server/services"
 	"github.com/bitsongofficial/bitsong-media-server/transcoder"
+	files "github.com/ipfs/go-ipfs-files"
+	icore "github.com/ipfs/interface-go-ipfs-core"
+	icorepath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/nfnt/resize"
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"image"
 	"image/jpeg"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 
 	_ "github.com/bitsongofficial/bitsong-media-server/server/docs"
@@ -27,13 +33,15 @@ const (
 )
 
 // RegisterRoutes registers all HTTP routes with the provided mux router.
-func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder) {
+func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
 
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler()).Methods(methodPOST)
 
 	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler()).Methods(methodGET)
+
+	r.HandleFunc("/ipfs/{cid}", getIpfsGatewayHandler(ipfsNode)).Methods(methodGET)
 }
 
 type UploadAudioResp struct {
@@ -252,5 +260,56 @@ func getTranscodeHandler() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(res)
+	}
+}
+
+// @Summary Get ipfs media content
+// @Description Get media content from IPFS by CID.
+// @Tags ipfs
+// @Produce application/octet-stream
+// @Param cid path string true "CID"
+// @Success 200 {object} file
+// @Failure 400 {object} server.ErrorResponse "Failure to serve media content"
+// @Router /ipfs/{cid} [get]
+func getIpfsGatewayHandler(ipfsNode icore.CoreAPI) http.HandlerFunc {
+	// similar to https://github.com/ipfs/go-ipfs/blob/master/core/corehttp/gateway_handler.go
+	return func(w http.ResponseWriter, r *http.Request) {
+		var params = mux.Vars(r)
+		cid := params["cid"]
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		ipfsCID := icorepath.New(cid)
+
+		data, err := ipfsNode.Unixfs().Get(ctx, ipfsCID)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot serve content"))
+			return
+		}
+		defer data.Close()
+
+		content, ok := data.(files.File)
+
+		if !ok {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot serve content"))
+			return
+		}
+
+		defer content.Close()
+
+		w.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", url.PathEscape(cid)))
+		w.Header().Set("Content-Type", "application/octet-stream")
+		//w.Header().Set("Content-Type", "application/x-mpegURL")
+		/*w.Header().Set("Content-Length", r.Header.Get("Content-Length"))
+
+		_, err = content.Size()
+		if err != nil {
+			http.Error(w, "cannot serve files with unknown sizes", http.StatusBadGateway)
+			return
+		}*/
+
+		io.Copy(w, content)
 	}
 }

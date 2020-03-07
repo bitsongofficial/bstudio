@@ -7,12 +7,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
-	files "github.com/ipfs/go-ipfs-files"
 	"github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/coreapi"
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
 	"github.com/ipfs/go-ipfs/namesys"
-	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	peerstore "github.com/libp2p/go-libp2p-peerstore"
@@ -26,7 +24,6 @@ import (
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
 	icore "github.com/ipfs/interface-go-ipfs-core"
-	icorepath "github.com/ipfs/interface-go-ipfs-core/path"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -87,20 +84,6 @@ func spawnDefault(ctx context.Context, path string) (icore.CoreAPI, error) {
 	}
 
 	return createNode(ctx, path)
-}
-
-func getUnixfsNode(path string) (files.Node, error) {
-	st, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-
-	f, err := files.NewSerialFile(path, false, st)
-	if err != nil {
-		return nil, err
-	}
-
-	return f, nil
 }
 
 func createMnemonic(newEntropy func(int) ([]byte, error), newMnemonic func([]byte) (string, error)) (string, error) {
@@ -309,52 +292,54 @@ func initializeIpnsKeyspace(ctx context.Context, repoRoot string, privKeyBytes [
 	return namesys.InitializeKeyspace(ctx, nd.Namesys, nd.Pinning, nd.PrivateKey)
 }
 
-func Start(ctx context.Context) {
+func Start(ctx context.Context) icore.CoreAPI {
 	fmt.Println("-- Getting an IPFS node running -- ")
 
 	fmt.Println("Spawning node on a temporary repo")
-	ipfs, err := spawnDefault(ctx, repoRoot)
+	ipfsNode, err := spawnDefault(ctx, repoRoot)
 	if err != nil {
 		panic(fmt.Errorf("failed to spawn ephemeral node: %s", err))
 	}
 
-	fmt.Println("\n-- Adding and getting back files & directories --")
+	go connectToPeers(ctx, ipfsNode, bootstrapNodes)
+
+	/*fmt.Println("\n-- Adding and getting back files & directories --")
 
 	inputBasePath := "./example/"
 	inputPathFile := inputBasePath + "test.txt"
 
-	someFile, err := getUnixfsNode(inputPathFile)
+	someFile, err := utils.GetUnixfsNode(inputPathFile)
 	if err != nil {
 		panic(fmt.Errorf("Could not get File: %s", err))
 	}
 
-	cidFile, err := ipfs.Unixfs().Add(ctx, someFile)
+	cidFile, err := ipfsNode.Unixfs().Add(ctx, someFile)
 	if err != nil {
 		panic(fmt.Errorf("Could not add File: %s", err))
 	}
 
 	fmt.Printf("Added file to IPFS with CID %s\n", cidFile.String())
 
-	_, err = ipfs.Unixfs().Get(ctx, path.New("/ipfs/QmeomffUNfmQy76CQGy9NdmqEnnHU9soCexBnGU3ezPHVH"))
+	_, err = ipfsNode.Unixfs().Get(ctx, path.New("/ipfs/QmeomffUNfmQy76CQGy9NdmqEnnHU9soCexBnGU3ezPHVH"))
 	if err != nil {
 		panic(fmt.Errorf("Could not get file with CID: %s", err))
 	}
 
 	fmt.Println("\n-- Going to connect to a few nodes in the Network as bootstrappers --")
 
-	go connectToPeers(ctx, ipfs, bootstrapNodes)
-
 	exampleCIDStr := "QmUaoioqU7bxezBQZkUcgcSyokatMY71sxsALxQmRRrHrj"
 
 	fmt.Printf("Fetching a file from the network with CID %s\n", exampleCIDStr)
 	testCID := icorepath.New(exampleCIDStr)
 
-	_, err = ipfs.Unixfs().Get(ctx, testCID)
+	_, err = ipfsNode.Unixfs().Get(ctx, testCID)
 	if err != nil {
 		panic(fmt.Errorf("Could not get file with CID: %s", err))
-	}
+	}*/
 
-	fmt.Printf("done!\n")
+	fmt.Printf("IPFS Started!\n")
+
+	return ipfsNode
 }
 
 func connectToPeers(ctx context.Context, ipfs icore.CoreAPI, peers []string) error {

@@ -1,18 +1,24 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/bitsongofficial/bitsong-media-server/ipfs"
 	"github.com/bitsongofficial/bitsong-media-server/models"
 	"github.com/bitsongofficial/bitsong-media-server/transcoder"
+	"github.com/bitsongofficial/bitsong-media-server/utils"
 	"github.com/gorilla/mux"
+	icore "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/rs/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bitsongofficial/bitsong-media-server/server"
@@ -71,14 +77,14 @@ func getStartCmd() *cobra.Command {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			ipfs.Start(ctx)
+			ipfsNode := ipfs.Start(ctx)
 
 			// make a queue with a capacity of 1 transcoder.
 			queue := make(chan *transcoder.Transcoder, 1)
 
 			go func() {
 				for q := range queue {
-					doTranscode(q)
+					doTranscode(q, ipfsNode)
 				}
 			}()
 
@@ -88,7 +94,7 @@ func getStartCmd() *cobra.Command {
 				AllowedOrigins: []string{"*"},
 			})
 
-			server.RegisterRoutes(router, queue)
+			server.RegisterRoutes(router, queue, ipfsNode)
 
 			srv := &http.Server{
 				Handler:      c.Handler(router),
@@ -108,7 +114,7 @@ func getStartCmd() *cobra.Command {
 	return startCmd
 }
 
-func doTranscode(audio *transcoder.Transcoder) {
+func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 	tm := &models.Transcoder{
 		ID: audio.Id,
 	}
@@ -134,10 +140,88 @@ func doTranscode(audio *transcoder.Transcoder) {
 		return
 	}
 
-	tm.UpdatePercentage(100)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Get list of segments *.ts
+	// For each segment upload to ipfs
+	err := filepath.Walk(audio.Uploader.GetDir(), func(path string, info os.FileInfo, err error) error {
+		if strings.HasSuffix(path, ".ts") {
+			fmt.Println(path)
+			segment, err := utils.GetUnixfsNode(path)
+			if err != nil {
+				panic(fmt.Errorf("Could not get File: %s", err))
+			}
+
+			cidFile, err := ipfsNode.Unixfs().Add(ctx, segment)
+			if err != nil {
+				panic(fmt.Errorf("Could not add File: %s", err))
+			}
+
+			fmt.Println("Added file to IPFS with CID %s\n", cidFile.String())
+
+			// Replace string into m3u8
+			listFileName := audio.Uploader.GetDir() + "list.m3u8"
+			list, err := ioutil.ReadFile(listFileName)
+			if err != nil {
+				panic(fmt.Errorf("Cannot read list: %s", err))
+			}
+
+			oldFileName := strings.Replace(path, audio.Uploader.GetDir(), "", -1)
+			newFileName := fmt.Sprintf("%s", cidFile.String())
+
+			listReplaced := bytes.Replace(list, []byte(oldFileName), []byte(newFileName), -1)
+
+			// Change segment to hash in list.m3u8
+			if err = ioutil.WriteFile(listFileName, listReplaced, 0666); err != nil {
+				panic(fmt.Errorf("Cannot update list: %s", err))
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	// Upload list.m3u8 to ipfs
+	listFile, err := utils.GetUnixfsNode(audio.Uploader.GetDir() + "list.m3u8")
+	if err != nil {
+		panic(fmt.Errorf("Could not get File: %s", err))
+	}
+
+	cidFile, err := ipfsNode.Unixfs().Add(ctx, listFile)
+	if err != nil {
+		panic(fmt.Errorf("Could not add File: %s", err))
+	}
+
+	fmt.Println(fmt.Sprintf("Added list.m3u8 to IPFS with CID %s\n", cidFile.String()))
+
+	// Save cid list.m3u8 to transcoder collection
+	tm.AddList(cidFile.String())
+
+	// Upload original file to ipfs
+	originaFile, err := utils.GetUnixfsNode(audio.Uploader.GetDir() + "original.mp3")
+	if err != nil {
+		panic(fmt.Errorf("Could not get File: %s", err))
+	}
+
+	cidFile, err = ipfsNode.Unixfs().Add(ctx, originaFile)
+	if err != nil {
+		panic(fmt.Errorf("Could not add File: %s", err))
+	}
+
+	fmt.Println(fmt.Sprintf("Added original.mp3 to IPFS with CID %s\n", cidFile.String()))
+
+	// Save cid original file to transcoder collection
+	tm.AddOriginal(cidFile.String())
 
 	// remove all files
 	audio.Uploader.RemoveAll()
+
+	// TODO: Do not forget to pin everything
+
+	tm.UpdatePercentage(100)
 
 	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("transcode completed")
 }
