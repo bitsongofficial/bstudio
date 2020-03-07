@@ -16,7 +16,7 @@ const Collection = "transcoder"
 type Transcoder struct {
 	ID          primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
 	Percentage  int                `json:"percentage" bson:"percentage"`
-	UploadID    uuid.UUID          `json:"upload_id" bson:"upload_id"`
+	UploadID    string             `json:"upload_id" bson:"upload_id"`
 	CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
 	CompletedAt time.Time          `json:"completed_at" bson:"completed_at"`
 }
@@ -25,7 +25,7 @@ func NewTranscoder(uid uuid.UUID) *Transcoder {
 	return &Transcoder{
 		ID:         primitive.NewObjectID(),
 		Percentage: 0,
-		UploadID:   uid,
+		UploadID:   uid.String(),
 		CreatedAt:  time.Now(),
 	}
 }
