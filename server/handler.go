@@ -16,6 +16,7 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,6 +24,11 @@ import (
 	_ "github.com/bitsongofficial/bitsong-media-server/server/docs"
 	"github.com/gorilla/mux"
 	httpswagger "github.com/swaggo/http-swagger"
+
+	"github.com/cosmos/cosmos-sdk/codec"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/x/auth/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 const (
@@ -36,6 +42,7 @@ const (
 func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
 
+	r.HandleFunc("/api/v1/upload/test", uploadTestHandler()).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler()).Methods(methodPOST)
 
@@ -148,6 +155,81 @@ func uploadAudioHandler(q chan *transcoder.Transcoder) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(bz)
+	}
+}
+var ModuleCdc = makeCodec()
+var _ sdk.Msg = MsgUpload{}
+
+type MsgUpload struct {
+	FromAddress sdk.AccAddress `json:"from_address"`
+}
+
+func (msg MsgUpload) Route() string { return "upload" }
+func (msg MsgUpload) Type() string  { return "upload" }
+func (msg MsgUpload) ValidateBasic() sdk.Error {
+	return nil
+}
+
+func (msg MsgUpload) GetSignBytes() []byte {
+	return sdk.MustSortJSON(ModuleCdc.MustMarshalJSON(msg))
+}
+
+// GetSigners defines whose signature is required
+func (msg MsgUpload) GetSigners() []sdk.AccAddress {
+	return []sdk.AccAddress{msg.FromAddress}
+}
+
+func makeCodec() *codec.Codec {
+	config := sdk.GetConfig()
+	config.SetBech32PrefixForAccount("bitsong", "bitsongpub")
+	config.Seal()
+
+	var cdc = codec.New()
+	sdk.RegisterCodec(cdc)
+	codec.RegisterCrypto(cdc)
+	authtypes.RegisterCodec(cdc)
+	cdc.RegisterConcrete(MsgUpload{}, "bitsong-media-server/MsgUpload", nil)
+	return cdc
+}
+
+type BroadcastReq struct {
+	Tx   types.StdTx `json:"tx"`
+}
+
+func uploadTestHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req BroadcastReq
+
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to read request: %w", err))
+			return
+		}
+
+		err = ModuleCdc.UnmarshalJSON(body, &req)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
+			return
+		}
+
+		/*signers := req.Tx.GetSigners()
+		fmt.Println(len(signers))
+		for i, signer := range signers {
+			fmt.Println(fmt.Printf("  %v: %v\n", i, signer.String()))
+		}*/
+
+		sigs := req.Tx.Signatures
+
+		for _, sig := range sigs {
+			sigAddr := sdk.AccAddress(sig.Address())
+
+			fmt.Println(sigAddr.String())
+
+			/*if ok := sig.VerifyBytes(sigBytes, sig.Signature); !ok {
+				sigSanity = "ERROR: signature invalid"
+				success = false
+			}*/
+		}
 	}
 }
 
