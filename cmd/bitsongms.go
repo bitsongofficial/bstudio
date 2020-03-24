@@ -7,7 +7,10 @@ import (
 	"github.com/bitsongofficial/bitsong-media-server/ipfs"
 	"github.com/bitsongofficial/bitsong-media-server/models"
 	"github.com/bitsongofficial/bitsong-media-server/transcoder"
+	"github.com/bitsongofficial/bitsong-media-server/types"
 	"github.com/bitsongofficial/bitsong-media-server/utils"
+	"github.com/cosmos/cosmos-sdk/codec"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/gorilla/mux"
 	icore "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/rs/cors"
@@ -55,6 +58,18 @@ func Execute() {
 	}
 }
 
+func MakeCodec() *codec.Codec {
+	var cdc = codec.New()
+
+	//ModuleBasics.RegisterCodec(cdc)
+	sdk.RegisterCodec(cdc)
+	types.RegisterCodec(cdc)
+	codec.RegisterCrypto(cdc)
+	codec.RegisterEvidences(cdc)
+
+	return cdc
+}
+
 func getStartCmd() *cobra.Command {
 	startCmd := &cobra.Command{
 		Use:   "start",
@@ -72,6 +87,14 @@ func getStartCmd() *cobra.Command {
 					return err
 				}
 			}
+
+			// SDK Config
+			config := sdk.GetConfig()
+			config.SetBech32PrefixForAccount("bitsong", "bitsongpub")
+			config.Seal()
+
+			// Make Codec
+			cdc := MakeCodec()
 
 			// Start IPFS
 			ctx, cancel := context.WithCancel(context.Background())
@@ -94,7 +117,7 @@ func getStartCmd() *cobra.Command {
 				AllowedOrigins: []string{"*"},
 			})
 
-			server.RegisterRoutes(router, queue, ipfsNode)
+			server.RegisterRoutes(router, queue, ipfsNode, cdc)
 
 			srv := &http.Server{
 				Handler:      c.Handler(router),
