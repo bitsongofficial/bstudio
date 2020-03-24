@@ -58,7 +58,7 @@ func Execute() {
 	}
 }
 
-func MakeCodec() *codec.Codec {
+func makeCodec() *codec.Codec {
 	var cdc = codec.New()
 
 	sdk.RegisterCodec(cdc)
@@ -93,7 +93,7 @@ func getStartCmd() *cobra.Command {
 			config.Seal()
 
 			// Make Codec
-			cdc := MakeCodec()
+			cdc := makeCodec()
 
 			// Start IPFS
 			ctx, cancel := context.WithCancel(context.Background())
@@ -180,7 +180,7 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 				panic(fmt.Errorf("Could not add File: %s", err))
 			}
 
-			fmt.Println("Added file to IPFS with CID %s\n", cidFile.String())
+			fmt.Println(fmt.Sprintf("Added file to IPFS with CID %s\n", cidFile.String()))
 
 			// Replace string into m3u8
 			listFileName := audio.Uploader.GetDir() + "list.m3u8"
@@ -223,20 +223,31 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 	tm.AddList(cidFile.String())
 
 	// Upload original file to ipfs
-	originaFile, err := utils.GetUnixfsNode(audio.Uploader.GetDir() + "original.mp3")
+	err = filepath.Walk(audio.Uploader.GetDir(), func(path string, info os.FileInfo, err error) error {
+		if strings.HasPrefix(path, "original.") {
+			fmt.Println(path)
+			originalFile, err := utils.GetUnixfsNode(path)
+			if err != nil {
+				panic(fmt.Errorf("Could not get File: %s", err))
+			}
+
+			cidFile, err = ipfsNode.Unixfs().Add(ctx, originalFile)
+			if err != nil {
+				panic(fmt.Errorf("Could not add File: %s", err))
+			}
+
+			fmt.Println(fmt.Sprintf("Added original file to IPFS with CID %s\n", cidFile.String()))
+
+			// Save cid original file to transcoder collection
+			tm.AddOriginal(cidFile.String())
+
+		}
+		return nil
+	})
+
 	if err != nil {
-		panic(fmt.Errorf("Could not get File: %s", err))
+		panic(err)
 	}
-
-	cidFile, err = ipfsNode.Unixfs().Add(ctx, originaFile)
-	if err != nil {
-		panic(fmt.Errorf("Could not add File: %s", err))
-	}
-
-	fmt.Println(fmt.Sprintf("Added original.mp3 to IPFS with CID %s\n", cidFile.String()))
-
-	// Save cid original file to transcoder collection
-	tm.AddOriginal(cidFile.String())
 
 	// remove all files
 	audio.Uploader.RemoveAll()

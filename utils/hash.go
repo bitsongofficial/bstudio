@@ -13,6 +13,11 @@ func CalculateFileHash(file multipart.File) (string, error) {
 		return "", err
 	}
 
+	_, err := file.Seek(0, 0) // start of file
+	if err != nil {
+		return "", err
+	}
+
 	hash := fmt.Sprintf("%x", h.Sum(nil))
 
 	return hash, nil

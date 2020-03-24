@@ -1,15 +1,15 @@
 package server
 
 import (
+	"bytes"
 	"context"
-	"github.com/bitsongofficial/bitsong-media-server/types"
-	"github.com/bitsongofficial/bitsong-media-server/utils"
-
 	"encoding/json"
 	"fmt"
 	"github.com/bitsongofficial/bitsong-media-server/models"
 	"github.com/bitsongofficial/bitsong-media-server/services"
 	"github.com/bitsongofficial/bitsong-media-server/transcoder"
+	"github.com/bitsongofficial/bitsong-media-server/types"
+	"github.com/bitsongofficial/bitsong-media-server/utils"
 	files "github.com/ipfs/go-ipfs-files"
 	icore "github.com/ipfs/interface-go-ipfs-core"
 	icorepath "github.com/ipfs/interface-go-ipfs-core/path"
@@ -28,7 +28,6 @@ import (
 	httpswagger "github.com/swaggo/http-swagger"
 
 	"github.com/cosmos/cosmos-sdk/codec"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	authTypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
@@ -43,13 +42,44 @@ const (
 func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore.CoreAPI, cdc *codec.Codec) {
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
 
-	r.HandleFunc("/api/v1/upload/test", uploadTestHandler(cdc)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, cdc)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler()).Methods(methodPOST)
 
 	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler()).Methods(methodGET)
 
 	r.HandleFunc("/ipfs/{cid}", getIpfsGatewayHandler(ipfsNode)).Methods(methodGET)
+}
+
+func ValidateUploadTx(tx authTypes.StdTx, hash string) error {
+	signers := tx.GetSigners()
+	sigs := tx.Signatures
+
+	// Verify signature
+	for _, sig := range sigs {
+		if !bytes.Equal(sig.Address(), signers[0]) {
+			return fmt.Errorf("signature does not match signer address")
+		}
+	}
+
+	for _, msg := range tx.GetMsgs() {
+		if msg.Type() == types.TypeMsgUpload {
+			uploadMsg := msg.(types.MsgUpload)
+
+			if err := uploadMsg.ValidateBasic(); err != nil {
+				return fmt.Errorf("failed to validate msg")
+			}
+
+			if uploadMsg.FileHash != hash {
+				return fmt.Errorf("calculated hash does not match file hash")
+			}
+		}
+	}
+
+	return nil
+}
+
+type UploadReq struct {
+	Tx authTypes.StdTx `json:"tx"`
 }
 
 type UploadAudioResp struct {
@@ -67,8 +97,10 @@ type UploadAudioResp struct {
 // @Success 200 {object} server.UploadAudioResp
 // @Failure 400 {object} server.ErrorResponse "Error"
 // @Router /upload/audio [post]
-func uploadAudioHandler(q chan *transcoder.Transcoder) http.HandlerFunc {
+func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var req UploadReq
+
 		file, header, err := r.FormFile("file")
 		if err != nil {
 			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("file field is required"))
@@ -76,8 +108,30 @@ func uploadAudioHandler(q chan *transcoder.Transcoder) http.HandlerFunc {
 		}
 		defer file.Close()
 
+		// Get Tx
+		tx := r.FormValue("tx")
+		err = cdc.UnmarshalJSON([]byte(tx), &req)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
+			return
+		}
+
+		// Calculate File Hash
+		hash, err := utils.CalculateFileHash(file)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to calculate sha256"))
+			return
+		}
+
+		// Validate UploadTx
+		err = ValidateUploadTx(req.Tx, hash)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, err)
+			return
+		}
+
 		log.Info().Str("filename", header.Filename).Msg("handling audio upload...")
-		uploader := services.NewUploader(file, header)
+		uploader := services.NewUploader(&file, header)
 
 		// check if the file is audio
 		log.Info().Str("filename", header.Filename).Msg("check if the file is audio")
@@ -117,7 +171,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder) http.HandlerFunc {
 		if err != nil {
 			uploader.RemoveAll()
 
-			log.Error().Str("filename", uploader.Header.Filename).Msg("Cannot get audio duration.")
+			log.Error().Str("filename", uploader.Header.Filename).Msg(fmt.Sprintf("Cannot get audio duration: %s", err))
 
 			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Cannot get audio duration"))
 			return
@@ -159,68 +213,6 @@ func uploadAudioHandler(q chan *transcoder.Transcoder) http.HandlerFunc {
 	}
 }
 
-type BroadcastReq struct {
-	Tx authTypes.StdTx `json:"tx"`
-}
-
-func uploadTestHandler(cdc *codec.Codec) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req BroadcastReq
-
-		file, header, err := r.FormFile("file")
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("file field is required"))
-			return
-		}
-		defer file.Close()
-
-		hash, err := utils.CalculateFileHash(file)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to calculate sha256"))
-			return
-		}
-
-		fmt.Println(hash)
-		fmt.Println(header.Filename)
-
-		tx := r.FormValue("tx")
-		err = cdc.UnmarshalJSON([]byte(tx), &req)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
-			return
-		}
-
-		for _, msg := range req.Tx.GetMsgs() {
-			if msg.Type() == types.TypeMsgUpload {
-				uploadMsg := msg.(types.MsgUpload)
-
-				fmt.Println(fmt.Sprintf("From: %s", uploadMsg.FromAddress))
-				fmt.Println(fmt.Sprintf("File Hash: %s", uploadMsg.FileHash))
-			}
-		}
-
-		/*signers := req.Tx.GetSigners()
-		fmt.Println(len(signers))
-		for i, signer := range signers {
-			fmt.Println(fmt.Printf("  %v: %v\n", i, signer.String()))
-		}*/
-		//req.Tx.ValidateBasic()
-
-		sigs := req.Tx.Signatures
-
-		for _, sig := range sigs {
-			sigAddr := sdk.AccAddress(sig.Address())
-
-			fmt.Println(sigAddr.String())
-
-			/*if ok := sig.VerifyBytes(sigBytes, sig.Signature); !ok {
-				sigSanity = "ERROR: signature invalid"
-				success = false
-			}*/
-		}
-	}
-}
-
 type UploadImageResp struct {
 	Filename string `json:"filename"`
 }
@@ -243,7 +235,7 @@ func uploadImageHandler() http.HandlerFunc {
 		defer file.Close()
 
 		log.Info().Str("filename", header.Filename).Msg("handling audio upload...")
-		uploader := services.NewUploader(file, header)
+		uploader := services.NewUploader(&file, header)
 
 		// check if the file is image
 		log.Info().Str("filename", header.Filename).Msg("check if the file is image")

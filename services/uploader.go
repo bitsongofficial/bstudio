@@ -10,11 +10,11 @@ import (
 
 type Uploader struct {
 	ID     uuid.UUID
-	File   multipart.File
+	File   *multipart.File
 	Header *multipart.FileHeader
 }
 
-func NewUploader(file multipart.File, header *multipart.FileHeader) *Uploader {
+func NewUploader(file *multipart.File, header *multipart.FileHeader) *Uploader {
 	id, err := uuid.NewUUID()
 	if err != nil {
 		panic("cannot generate new uuid")
@@ -88,7 +88,7 @@ func (u *Uploader) SaveOriginal() (*os.File, error) {
 	}
 
 	// write the content from POST to the file
-	_, err = io.Copy(buff, u.File)
+	_, err = io.Copy(buff, *u.File)
 	if err != nil {
 		return nil, err
 	}
