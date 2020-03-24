@@ -61,7 +61,6 @@ func Execute() {
 func MakeCodec() *codec.Codec {
 	var cdc = codec.New()
 
-	//ModuleBasics.RegisterCodec(cdc)
 	sdk.RegisterCodec(cdc)
 	types.RegisterCodec(cdc)
 	codec.RegisterCrypto(cdc)
