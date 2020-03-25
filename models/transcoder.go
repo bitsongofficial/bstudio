@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const Collection = "transcoder"
+const TranscoderCollection = "transcoder"
 
 type Transcoder struct {
 	ID          primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
@@ -35,7 +35,7 @@ func NewTranscoder(uid uuid.UUID) *Transcoder {
 func (t *Transcoder) GetCollection() *mongo.Collection {
 	db, _ := db.Connect()
 
-	return db.Collection(Collection)
+	return db.Collection(TranscoderCollection)
 }
 
 func (t *Transcoder) Create() error {

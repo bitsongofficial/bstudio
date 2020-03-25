@@ -35,7 +35,7 @@ const (
 	methodGET  = "GET"
 	methodPOST = "POST"
 
-	MAX_AUDIO_LENGTH = 610
+	MAX_AUDIO_LENGTH = 61000
 )
 
 // RegisterRoutes registers all HTTP routes with the provided mux router.
@@ -87,6 +87,7 @@ type UploadAudioResp struct {
 	TranscoderID string  `json:"transcoder_id"`
 	FileName     string  `json:"file_name"`
 	Duration     float32 `json:"duration"`
+	TrackID      string  `json:"track_id"`
 }
 
 // @Summary Upload and transcode audio file
@@ -191,11 +192,20 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 
 		q <- audio
 
+		track := models.NewTrack(req.Tx.GetSigners()[0].String())
+		if err := track.Create(); err != nil {
+			uploader.RemoveAll()
+
+			writeErrorResponse(w, http.StatusBadRequest, err)
+			return
+		}
+
 		res := UploadAudioResp{
 			ID:           uploader.ID.String(),
 			TranscoderID: tm.ID.Hex(),
 			FileName:     uploader.Header.Filename,
 			Duration:     duration,
+			TrackID:      track.ID.String(),
 		}
 
 		bz, err := json.Marshal(res)
@@ -203,7 +213,6 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			uploader.RemoveAll()
 
 			log.Error().Str("filename", uploader.Header.Filename).Msg("Failed to encode response")
-
 			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
 			return
 		}
@@ -331,6 +340,8 @@ func getIpfsGatewayHandler(ipfsNode icore.CoreAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var params = mux.Vars(r)
 		cid := params["cid"]
+
+		fmt.Println(cid)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
