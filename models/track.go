@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/bitsongofficial/bitsong-media-server/db"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"time"
@@ -31,13 +32,19 @@ type Track struct {
 	Copyright            string             `json:"copyright" bson:"copyright"`   // RR/CC
 	Visibility           string             `json:"visibility" bson:"visibility"` // public/private
 	Owner                string             `json:"owner" bson:"owner"`
+	IsDraft              bool               `json:"is_draft" bson:"is_draft"`
+	Audio                string             `json:"audio" bson:"audio"`
+	Image                string             `json:"image" bson:"image"`
+	Duration             float32            `json:"duration" bson:"duration"`
 	CreatedAt            time.Time          `json:"created_at" bson:"created_at"`
 }
 
-func NewTrack(owner string) *Track {
+func NewTrack(owner string, duration float32) *Track {
 	return &Track{
 		ID:        primitive.NewObjectID(),
 		Owner:     owner,
+		IsDraft:   true,
+		Duration:  duration,
 		CreatedAt: time.Now(),
 	}
 }
@@ -54,6 +61,28 @@ func (t *Track) Create() error {
 	_, err := collection.InsertOne(ctx, t)
 	if err != nil {
 		return fmt.Errorf("cannot create mongo/track")
+	}
+
+	return nil
+}
+
+func (t *Transcoder) UpdateAudioHash(cid string) error {
+	collection := t.GetCollection()
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+
+	filter := bson.D{
+		{"_id", t.ID},
+	}
+
+	update := bson.D{
+		{"$set", bson.D{
+			{"audio", cid},
+		}},
+	}
+
+	_, err := collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
 	}
 
 	return nil

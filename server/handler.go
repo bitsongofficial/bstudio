@@ -192,7 +192,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 
 		q <- audio
 
-		track := models.NewTrack(req.Tx.GetSigners()[0].String())
+		track := models.NewTrack(req.Tx.GetSigners()[0].String(), duration)
 		if err := track.Create(); err != nil {
 			uploader.RemoveAll()
 
@@ -205,7 +205,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			TranscoderID: tm.ID.Hex(),
 			FileName:     uploader.Header.Filename,
 			Duration:     duration,
-			TrackID:      track.ID.String(),
+			TrackID:      track.ID.Hex(),
 		}
 
 		bz, err := json.Marshal(res)

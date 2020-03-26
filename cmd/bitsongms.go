@@ -252,6 +252,8 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 	// remove all files
 	audio.Uploader.RemoveAll()
 
+	// update track db
+
 	// TODO: Do not forget to pin everything
 
 	tm.UpdatePercentage(100)
