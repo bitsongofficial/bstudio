@@ -45,9 +45,15 @@ func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, cdc)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler()).Methods(methodPOST)
 
+	r.HandleFunc("/api/v1/track/edit", trackEditHandler(cdc)).Methods(methodPOST)
+
 	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler()).Methods(methodGET)
 
 	r.HandleFunc("/ipfs/{cid}", getIpfsGatewayHandler(ipfsNode)).Methods(methodGET)
+}
+
+type TxReq struct {
+	Tx authTypes.StdTx `json:"tx"`
 }
 
 func ValidateUploadTx(tx authTypes.StdTx, hash string) error {
@@ -78,8 +84,78 @@ func ValidateUploadTx(tx authTypes.StdTx, hash string) error {
 	return nil
 }
 
-type UploadReq struct {
-	Tx authTypes.StdTx `json:"tx"`
+func ValidateEditTrackTx(tx authTypes.StdTx, track_id string) error {
+	signers := tx.GetSigners()
+	sigs := tx.Signatures
+
+	// Verify signature
+	for _, sig := range sigs {
+		if !bytes.Equal(sig.Address(), signers[0]) {
+			return fmt.Errorf("signature does not match signer address")
+		}
+	}
+
+	for _, msg := range tx.GetMsgs() {
+		if msg.Type() == types.TypeMsgEditTrack {
+			editTrackMsg := msg.(types.MsgEditTrack)
+
+			if err := editTrackMsg.ValidateBasic(); err != nil {
+				return fmt.Errorf("failed to validate msg")
+			}
+
+			trackId, err := primitive.ObjectIDFromHex(track_id)
+			if err != nil {
+				return fmt.Errorf("failed to validate track id")
+			}
+
+			track, err := models.GetTrack(trackId)
+			if track.Owner != signers[0].String() {
+				return fmt.Errorf("failed to validate track owner")
+			}
+		}
+	}
+
+	return nil
+}
+
+type EditTrackResp struct {
+	TrackID string `json:"track_id"`
+}
+
+func trackEditHandler(cdc *codec.Codec) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		//var req TxReq
+
+		trackId := "test_id"
+		res := EditTrackResp{
+			TrackID: trackId,
+		}
+
+		bz, err := json.Marshal(res)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(bz)
+
+		// Get Tx
+		/*		tx := r.FormValue("tx")
+				err = cdc.UnmarshalJSON([]byte(tx), &req)
+				if err != nil {
+					writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
+					return
+				}
+
+				// Validate EditTrackTx
+				err = ValidateEditTrackTx(req.Tx, trackId)
+				if err != nil {
+					writeErrorResponse(w, http.StatusBadRequest, err)
+					return
+				}
+		*/
+	}
 }
 
 type UploadAudioResp struct {
@@ -100,7 +176,7 @@ type UploadAudioResp struct {
 // @Router /upload/audio [post]
 func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req UploadReq
+		var req TxReq
 
 		file, header, err := r.FormFile("file")
 		if err != nil {
