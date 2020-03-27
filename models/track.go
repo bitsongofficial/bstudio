@@ -49,38 +49,143 @@ func NewTrack(owner string, duration float32) *Track {
 	}
 }
 
-func (t *Track) GetCollection() *mongo.Collection {
+func GetTrackCollection() *mongo.Collection {
 	db, _ := db.Connect()
 	return db.Collection(TrackCollection)
 }
 
-func (t *Track) Create() error {
-	collection := t.GetCollection()
+// insert
+func (t *Track) Insert() error {
+	collection := GetTrackCollection()
 
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 	_, err := collection.InsertOne(ctx, t)
 	if err != nil {
-		return fmt.Errorf("cannot create mongo/track")
+		return fmt.Errorf("cannot insert track")
 	}
 
 	return nil
 }
 
-func (t *Transcoder) UpdateAudioHash(cid string) error {
-	collection := t.GetCollection()
+// get
+func GetTrack(trackID primitive.ObjectID) (*Track, error) {
+	collection := GetTrackCollection()
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+
+	filter := bson.D{
+		{"_id", trackID},
+	}
+
+	var track Track
+	err := collection.FindOne(ctx, filter).Decode(&track)
+	if err != nil {
+		return nil, err
+	}
+
+	return &track, nil
+}
+
+// update
+func (t *Track) Update() error {
+	collection := GetTrackCollection()
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 
 	filter := bson.D{
 		{"_id", t.ID},
 	}
 
+	var fields bson.D
+
+	if t.Title != "" {
+		fields = append(fields, bson.E{"title", t.Title})
+	}
+	if t.Artists != "" {
+		fields = append(fields, bson.E{"artists", t.Artists})
+	}
+	if t.Featurings != "" {
+		fields = append(fields, bson.E{"featurings", t.Featurings})
+	}
+	if t.Producers != "" {
+		fields = append(fields, bson.E{"producers", t.Producers})
+	}
+	if t.Genre != "" {
+		fields = append(fields, bson.E{"genre", t.Genre})
+	}
+	if t.Mood != "" {
+		fields = append(fields, bson.E{"mood", t.Mood})
+	}
+	if t.ReleaseDate != "" {
+		fields = append(fields, bson.E{"release_date", t.ReleaseDate})
+	}
+	if t.ReleaseDatePrecision != "" {
+		fields = append(fields, bson.E{"release_date_precision", t.ReleaseDatePrecision})
+	}
+	if t.Tags != "" {
+		fields = append(fields, bson.E{"tags", t.Tags})
+	}
+	if t.Label != "" {
+		fields = append(fields, bson.E{"label", t.Label})
+	}
+	if t.Isrc != "" {
+		fields = append(fields, bson.E{"isrc", t.Isrc})
+	}
+	if t.UpcEan != "" {
+		fields = append(fields, bson.E{"upc_ean", t.UpcEan})
+	}
+	if t.Iswc != "" {
+		fields = append(fields, bson.E{"iswc", t.Iswc})
+	}
+	if t.Credits != "" {
+		fields = append(fields, bson.E{"credits", t.Credits})
+	}
+	if t.Copyright != "" {
+		fields = append(fields, bson.E{"copyright", t.Copyright})
+	}
+	if t.Visibility != "" {
+		fields = append(fields, bson.E{"visibility", t.Visibility})
+	}
+	if t.Audio != "" {
+		fields = append(fields, bson.E{"audio", t.Audio})
+	}
+	if t.Image != "" {
+		fields = append(fields, bson.E{"image", t.Image})
+	}
+	if t.Duration != 0 {
+		fields = append(fields, bson.E{"duration", t.Duration})
+	}
+	if t.Explicit {
+		fields = append(fields, bson.E{"explicit", t.Explicit})
+	}
+	if !t.IsDraft {
+		fields = append(fields, bson.E{"is_draft", t.IsDraft})
+	}
+
+	if len(fields) == 0 {
+		return nil
+	}
+
 	update := bson.D{
-		{"$set", bson.D{
-			{"audio", cid},
-		}},
+		{"$set", fields},
 	}
 
 	_, err := collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// delete
+func (t *Track) Delete() error {
+	collection := GetTrackCollection()
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+
+	filter := bson.D{
+		{"_id", t.ID},
+	}
+
+	_, err := collection.DeleteOne(ctx, filter)
 	if err != nil {
 		return err
 	}

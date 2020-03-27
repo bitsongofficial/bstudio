@@ -222,6 +222,18 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 	// Save cid list.m3u8 to transcoder collection
 	tm.AddList(cidFile.String())
 
+	// update track db
+	track, err := models.GetTrack(audio.TrackID)
+	if err != nil {
+		panic(fmt.Errorf("Could not update track: %s", err))
+	}
+
+	track.Audio = cidFile.String()
+	err = track.Update()
+	if err != nil {
+		panic(fmt.Errorf("Could not update track: %s", err))
+	}
+
 	// Upload original file to ipfs
 	err = filepath.Walk(audio.Uploader.GetDir(), func(path string, info os.FileInfo, err error) error {
 		if strings.HasPrefix(path, "original.") {
@@ -251,8 +263,6 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 
 	// remove all files
 	audio.Uploader.RemoveAll()
-
-	// update track db
 
 	// TODO: Do not forget to pin everything
 

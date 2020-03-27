@@ -187,18 +187,20 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			return
 		}
 
-		// transcode audio
-		log.Info().Str("filename", header.Filename).Msg("transcode audio")
-
-		q <- audio
-
+		// Create track model
 		track := models.NewTrack(req.Tx.GetSigners()[0].String(), duration)
-		if err := track.Create(); err != nil {
+		if err := track.Insert(); err != nil {
 			uploader.RemoveAll()
 
 			writeErrorResponse(w, http.StatusBadRequest, err)
 			return
 		}
+
+		audio.TrackID = track.ID
+
+		// transcode audio
+		log.Info().Str("filename", header.Filename).Msg("transcode audio")
+		q <- audio
 
 		res := UploadAudioResp{
 			ID:           uploader.ID.String(),

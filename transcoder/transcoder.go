@@ -23,6 +23,7 @@ type FFProbeFormat struct {
 type Transcoder struct {
 	Uploader *services.Uploader
 	Id       primitive.ObjectID
+	TrackID  primitive.ObjectID
 	Format   FFProbeFormat `json:"format"`
 }
 
