@@ -190,6 +190,9 @@ var doc = `{
                 "id": {
                     "type": "string"
                 },
+                "track_id": {
+                    "type": "string"
+                },
                 "transcoder_id": {
                     "type": "string"
                 }

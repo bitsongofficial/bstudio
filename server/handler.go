@@ -10,6 +10,7 @@ import (
 	"github.com/bitsongofficial/bitsong-media-server/transcoder"
 	"github.com/bitsongofficial/bitsong-media-server/types"
 	"github.com/bitsongofficial/bitsong-media-server/utils"
+	"github.com/cosmos/cosmos-sdk/types/rest"
 	files "github.com/ipfs/go-ipfs-files"
 	icore "github.com/ipfs/interface-go-ipfs-core"
 	icorepath "github.com/ipfs/interface-go-ipfs-core/path"
@@ -19,6 +20,7 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -45,7 +47,7 @@ func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, cdc)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler()).Methods(methodPOST)
 
-	r.HandleFunc("/api/v1/track/edit", trackEditHandler(cdc)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/track", trackEditHandler(cdc)).Methods(methodPOST)
 
 	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler()).Methods(methodGET)
 
@@ -124,9 +126,28 @@ type EditTrackResp struct {
 
 func trackEditHandler(cdc *codec.Codec) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		//var req TxReq
+		var req TxReq
 
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			rest.WriteErrorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		err = cdc.UnmarshalJSON(body, &req)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
+			return
+		}
+
+		// Validate EditTrackTx
 		trackId := "test_id"
+		err = ValidateEditTrackTx(req.Tx, trackId)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, err)
+			return
+		}
+
 		res := EditTrackResp{
 			TrackID: trackId,
 		}
@@ -141,19 +162,7 @@ func trackEditHandler(cdc *codec.Codec) http.HandlerFunc {
 		_, _ = w.Write(bz)
 
 		// Get Tx
-		/*		tx := r.FormValue("tx")
-				err = cdc.UnmarshalJSON([]byte(tx), &req)
-				if err != nil {
-					writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
-					return
-				}
-
-				// Validate EditTrackTx
-				err = ValidateEditTrackTx(req.Tx, trackId)
-				if err != nil {
-					writeErrorResponse(w, http.StatusBadRequest, err)
-					return
-				}
+		/*
 		*/
 	}
 }

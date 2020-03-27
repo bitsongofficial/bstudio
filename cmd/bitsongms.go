@@ -114,8 +114,11 @@ func getStartCmd() *cobra.Command {
 			router := mux.NewRouter()
 			c := cors.New(cors.Options{
 				AllowedOrigins: []string{"*"},
-				//AllowedMethods: []string{"*"},
-				//AllowedHeaders: []string{"*"},
+				//AllowedMethods: []string{"GET", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"},
+				//AllowedHeaders: []string{"Origin", "Authorization", "Content-Type", "Accept", "Access-Control-Allow-Methods", "Access-Control-Request-Headers"},
+				//ExposedHeaders: []string{""},
+				//MaxAge: 10,
+				//AllowCredentials: true,
 			})
 
 			server.RegisterRoutes(router, queue, ipfsNode, cdc)
