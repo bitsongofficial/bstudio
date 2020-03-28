@@ -48,13 +48,30 @@ func (msg MsgUpload) GetSigners() []sdk.AccAddress {
 var _ sdk.Msg = MsgEditTrack{}
 
 type MsgEditTrack struct {
-	FromAddress sdk.AccAddress `json:"from_address"`
-	TrackId     string         `json:"track_id"`
-	Title       string         `json:"title"`
+	FromAddress          sdk.AccAddress `json:"from_address"`
+	TrackId              string         `json:"track_id"`
+	Title                string         `json:"title"`
+	Artists              string         `json:"artists"`
+	Featurings           string         `json:"featurings"`
+	Producers            string         `json:"producers"`
+	Genre                string         `json:"genre"`
+	Mood                 string         `json:"mood"`
+	ReleaseDate          string         `json:"release_date"`
+	ReleaseDatePrecision string         `json:"release_date_precision"`
+	Tags                 string         `json:"tags"`
+	Explicit             bool           `json:"explicit"`
+	Label                string         `json:"label"`
+	Isrc                 string         `json:"isrc"`
+	UpcEan               string         `json:"upc_ean"`
+	Iswc                 string         `json:"iswc"`
+	Credits              string         `json:"credits"`
+	Copyright            string         `json:"copyright"`
+	Visibility           string         `json:"visibility"`
+	IsDraft              bool           `json:"is_draft"`
 }
 
-func (msg MsgEditTrack) Route() string { return TypeMsgUpload }
-func (msg MsgEditTrack) Type() string  { return TypeMsgUpload }
+func (msg MsgEditTrack) Route() string { return TypeMsgEditTrack }
+func (msg MsgEditTrack) Type() string  { return TypeMsgEditTrack }
 func (msg MsgEditTrack) ValidateBasic() sdk.Error {
 	if msg.FromAddress.Empty() {
 		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "from address cannot be blank")

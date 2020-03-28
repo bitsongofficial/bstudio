@@ -86,14 +86,14 @@ func ValidateUploadTx(tx authTypes.StdTx, hash string) error {
 	return nil
 }
 
-func ValidateEditTrackTx(tx authTypes.StdTx, track_id string) error {
+func EditTrackTx(tx authTypes.StdTx) (*models.Track, error) {
 	signers := tx.GetSigners()
 	sigs := tx.Signatures
 
 	// Verify signature
 	for _, sig := range sigs {
 		if !bytes.Equal(sig.Address(), signers[0]) {
-			return fmt.Errorf("signature does not match signer address")
+			return nil, fmt.Errorf("signature does not match signer address")
 		}
 	}
 
@@ -102,22 +102,86 @@ func ValidateEditTrackTx(tx authTypes.StdTx, track_id string) error {
 			editTrackMsg := msg.(types.MsgEditTrack)
 
 			if err := editTrackMsg.ValidateBasic(); err != nil {
-				return fmt.Errorf("failed to validate msg")
+				return nil, fmt.Errorf("failed to validate msg")
 			}
 
-			trackId, err := primitive.ObjectIDFromHex(track_id)
+			trackId, err := primitive.ObjectIDFromHex(editTrackMsg.TrackId)
 			if err != nil {
-				return fmt.Errorf("failed to validate track id")
+				return nil, fmt.Errorf("failed to validate track id")
 			}
 
 			track, err := models.GetTrack(trackId)
-			if track.Owner != signers[0].String() {
-				return fmt.Errorf("failed to validate track owner")
+			if err != nil {
+				return nil, fmt.Errorf("failed to get track by trackId")
 			}
+			if track.Owner != signers[0].String() {
+				return nil, fmt.Errorf("failed to validate track owner")
+			}
+
+			if editTrackMsg.Title != "" {
+				track.Title = editTrackMsg.Title
+			}
+			if editTrackMsg.Artists != "" {
+				track.Artists = editTrackMsg.Artists
+			}
+			if editTrackMsg.Featurings != "" {
+				track.Featurings = editTrackMsg.Featurings
+			}
+			if editTrackMsg.Producers != "" {
+				track.Producers = editTrackMsg.Producers
+			}
+			if editTrackMsg.Genre != "" {
+				track.Genre = editTrackMsg.Genre
+			}
+			if editTrackMsg.Mood != "" {
+				track.Mood = editTrackMsg.Mood
+			}
+			if editTrackMsg.ReleaseDate != "" {
+				track.ReleaseDate = editTrackMsg.ReleaseDate
+			}
+			if editTrackMsg.ReleaseDatePrecision != "" {
+				track.ReleaseDatePrecision = editTrackMsg.ReleaseDatePrecision
+			}
+			if editTrackMsg.Tags != "" {
+				track.Tags = editTrackMsg.Tags
+			}
+			if editTrackMsg.Label != "" {
+				track.Label = editTrackMsg.Label
+			}
+			if editTrackMsg.Isrc != "" {
+				track.Isrc = editTrackMsg.Isrc
+			}
+			if editTrackMsg.UpcEan != "" {
+				track.UpcEan = editTrackMsg.UpcEan
+			}
+			if editTrackMsg.Iswc != "" {
+				track.Iswc = editTrackMsg.Iswc
+			}
+			if editTrackMsg.Credits != "" {
+				track.Credits = editTrackMsg.Credits
+			}
+			if editTrackMsg.Copyright != "" {
+				track.Copyright = editTrackMsg.Copyright
+			}
+			if editTrackMsg.Visibility != "" {
+				track.Visibility = editTrackMsg.Visibility
+			}
+			if editTrackMsg.Explicit {
+				track.Explicit = editTrackMsg.Explicit
+			}
+			if !editTrackMsg.IsDraft {
+				track.IsDraft = editTrackMsg.IsDraft
+			}
+
+			if err := track.Update(); err != nil {
+				return nil, fmt.Errorf("failed to update track")
+			}
+
+			return track, nil
 		}
 	}
 
-	return nil
+	return nil, fmt.Errorf("no valid msgs")
 }
 
 type EditTrackResp struct {
@@ -140,16 +204,15 @@ func trackEditHandler(cdc *codec.Codec) http.HandlerFunc {
 			return
 		}
 
-		// Validate EditTrackTx
-		trackId := "test_id"
-		err = ValidateEditTrackTx(req.Tx, trackId)
+		// EditTrackTx
+		track, err := EditTrackTx(req.Tx)
 		if err != nil {
 			writeErrorResponse(w, http.StatusBadRequest, err)
 			return
 		}
 
 		res := EditTrackResp{
-			TrackID: trackId,
+			TrackID: track.ID.Hex(),
 		}
 
 		bz, err := json.Marshal(res)
@@ -160,10 +223,6 @@ func trackEditHandler(cdc *codec.Codec) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(bz)
-
-		// Get Tx
-		/*
-		*/
 	}
 }
 
