@@ -19,6 +19,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"image"
 	"image/jpeg"
+	"image/png"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -37,7 +38,7 @@ const (
 	methodGET  = "GET"
 	methodPOST = "POST"
 
-	MAX_AUDIO_LENGTH = 61000
+	MaxAudioLength = 61000
 )
 
 // RegisterRoutes registers all HTTP routes with the provided mux router.
@@ -45,9 +46,11 @@ func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
 
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, cdc)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/upload/image", uploadImageHandler()).Methods(methodPOST)
+	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(cdc, ipfsNode)).Methods(methodPOST)
 
-	r.HandleFunc("/api/v1/track", trackEditHandler(cdc)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/track_edit", trackEditHandler(cdc)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/track", trackHandler(cdc)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/tracks", tracksHandler(cdc)).Methods(methodPOST)
 
 	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler()).Methods(methodGET)
 
@@ -58,14 +61,14 @@ type TxReq struct {
 	Tx authTypes.StdTx `json:"tx"`
 }
 
-func ValidateUploadTx(tx authTypes.StdTx, hash string) error {
+func ValidateUploadTx(tx authTypes.StdTx, hash string) (string, error) {
 	signers := tx.GetSigners()
 	sigs := tx.Signatures
 
 	// Verify signature
 	for _, sig := range sigs {
 		if !bytes.Equal(sig.Address(), signers[0]) {
-			return fmt.Errorf("signature does not match signer address")
+			return "", fmt.Errorf("signature does not match signer address")
 		}
 	}
 
@@ -74,16 +77,21 @@ func ValidateUploadTx(tx authTypes.StdTx, hash string) error {
 			uploadMsg := msg.(types.MsgUpload)
 
 			if err := uploadMsg.ValidateBasic(); err != nil {
-				return fmt.Errorf("failed to validate msg")
+				return "", fmt.Errorf("failed to validate msg")
 			}
 
 			if uploadMsg.FileHash != hash {
-				return fmt.Errorf("calculated hash does not match file hash")
+				return "", fmt.Errorf("calculated hash does not match file hash")
 			}
+
+			if uploadMsg.TrackId != "" {
+				return uploadMsg.TrackId, nil
+			}
+
 		}
 	}
 
-	return nil
+	return "", nil
 }
 
 func EditTrackTx(tx authTypes.StdTx) (*models.Track, error) {
@@ -166,12 +174,8 @@ func EditTrackTx(tx authTypes.StdTx) (*models.Track, error) {
 			if editTrackMsg.Visibility != "" {
 				track.Visibility = editTrackMsg.Visibility
 			}
-			if editTrackMsg.Explicit {
-				track.Explicit = editTrackMsg.Explicit
-			}
-			if !editTrackMsg.IsDraft {
-				track.IsDraft = editTrackMsg.IsDraft
-			}
+
+			track.Explicit = editTrackMsg.Explicit
 
 			if err := track.Update(); err != nil {
 				return nil, fmt.Errorf("failed to update track")
@@ -213,6 +217,148 @@ func trackEditHandler(cdc *codec.Codec) http.HandlerFunc {
 
 		res := EditTrackResp{
 			TrackID: track.ID.Hex(),
+		}
+
+		bz, err := json.Marshal(res)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(bz)
+	}
+}
+
+func GetTrackTx(tx authTypes.StdTx) (*models.Track, error) {
+	for _, msg := range tx.GetMsgs() {
+		if msg.Type() == types.TypeMsgGetTrack {
+			getTrackMsg := msg.(types.MsgGetTrack)
+
+			if err := getTrackMsg.ValidateBasic(); err != nil {
+				return nil, fmt.Errorf("failed to validate msg")
+			}
+
+			trackId, err := primitive.ObjectIDFromHex(getTrackMsg.TrackId)
+			if err != nil {
+				return nil, fmt.Errorf("failed to validate track id")
+			}
+
+			track, err := models.GetTrack(trackId)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get track by trackId")
+			}
+
+			return track, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid msgs")
+}
+
+type GetTrackResp struct {
+	Track *models.Track `json:"track"`
+}
+
+func trackHandler(cdc *codec.Codec) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req TxReq
+
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			rest.WriteErrorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		err = cdc.UnmarshalJSON(body, &req)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
+			return
+		}
+
+		// GetTrackTx
+		track, err := GetTrackTx(req.Tx)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, err)
+			return
+		}
+
+		res := GetTrackResp{
+			Track: track,
+		}
+
+		bz, err := json.Marshal(res)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(bz)
+	}
+}
+
+func GetTracksTx(tx authTypes.StdTx) (*[]models.Track, error) {
+	signers := tx.GetSigners()
+	sigs := tx.Signatures
+
+	// Verify signature
+	for _, sig := range sigs {
+		if !bytes.Equal(sig.Address(), signers[0]) {
+			return nil, fmt.Errorf("signature does not match signer address")
+		}
+	}
+
+	for _, msg := range tx.GetMsgs() {
+		if msg.Type() == types.TypeMsgGetTracks {
+			getTracksMsg := msg.(types.MsgGetTracks)
+
+			if err := getTracksMsg.ValidateBasic(); err != nil {
+				return nil, fmt.Errorf("failed to validate msg")
+			}
+
+			owner := getTracksMsg.FromAddress.String()
+			tracks, err := models.GetTracksByOwner(owner)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get tracks")
+			}
+
+			return tracks, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid msgs")
+}
+
+type GetTracksResp struct {
+	Tracks *[]models.Track `json:"tracks"`
+}
+
+func tracksHandler(cdc *codec.Codec) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req TxReq
+
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			rest.WriteErrorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		err = cdc.UnmarshalJSON(body, &req)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
+			return
+		}
+
+		// GetTracksTx
+		tracks, err := GetTracksTx(req.Tx)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, err)
+			return
+		}
+
+		res := GetTracksResp{
+			Tracks: tracks,
 		}
 
 		bz, err := json.Marshal(res)
@@ -269,7 +415,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 		}
 
 		// Validate UploadTx
-		err = ValidateUploadTx(req.Tx, hash)
+		_, err = ValidateUploadTx(req.Tx, hash)
 		if err != nil {
 			writeErrorResponse(w, http.StatusBadRequest, err)
 			return
@@ -322,7 +468,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			return
 		}
 
-		if duration > MAX_AUDIO_LENGTH {
+		if duration > MaxAudioLength {
 			uploader.RemoveAll()
 
 			log.Error().Float32("duration", duration).Msg("File length is too big")
@@ -369,7 +515,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 }
 
 type UploadImageResp struct {
-	Filename string `json:"filename"`
+	CID string `json:"cid"`
 }
 
 // @Summary Upload and create image file
@@ -380,8 +526,10 @@ type UploadImageResp struct {
 // @Success 200 {object} server.UploadImageResp
 // @Failure 400 {object} server.ErrorResponse "Error"
 // @Router /upload/image [post]
-func uploadImageHandler() http.HandlerFunc {
+func uploadImageHandler(cdc *codec.Codec, ipfsNode icore.CoreAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var req TxReq
+
 		file, header, err := r.FormFile("file")
 		if err != nil {
 			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("file field is required"))
@@ -389,7 +537,35 @@ func uploadImageHandler() http.HandlerFunc {
 		}
 		defer file.Close()
 
-		log.Info().Str("filename", header.Filename).Msg("handling audio upload...")
+		// Get Tx
+		tx := r.FormValue("tx")
+		err = cdc.UnmarshalJSON([]byte(tx), &req)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
+			return
+		}
+
+		// Calculate File Hash
+		hash, err := utils.CalculateFileHash(file)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to calculate sha256"))
+			return
+		}
+
+		// Validate UploadTx
+		trackIdStr, err := ValidateUploadTx(req.Tx, hash)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, err)
+			return
+		}
+
+		trackId, err := primitive.ObjectIDFromHex(trackIdStr)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, err)
+			return
+		}
+
+		log.Info().Str("filename", header.Filename).Msg("handling image upload...")
 		uploader := services.NewUploader(&file, header)
 
 		// check if the file is image
@@ -406,7 +582,17 @@ func uploadImageHandler() http.HandlerFunc {
 
 		large := resize.Thumbnail(500, 500, img, resize.Lanczos3)
 
-		outl, err := os.Create(uploader.GetDir() + "/test_large.jpg")
+		var filePath string
+
+		if uploader.GetContentType() == "image/jpeg" {
+			filePath = uploader.GetDir() + "/cover_large.jpg"
+		}
+
+		if uploader.GetContentType() == "image/png" {
+			filePath = uploader.GetDir() + "/cover_large.png"
+		}
+
+		outl, err := os.Create(filePath)
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to create tmp file"))
 			return
@@ -414,13 +600,21 @@ func uploadImageHandler() http.HandlerFunc {
 		defer outl.Close()
 
 		// Encode into jpeg http://blog.golang.org/go-image-package
-		err = jpeg.Encode(outl, large, nil)
+		if uploader.GetContentType() == "image/jpeg" {
+			err = jpeg.Encode(outl, large, nil)
+		}
+
+		if uploader.GetContentType() == "image/png" {
+			err = png.Encode(outl, large)
+		}
+
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to encode image"))
 			return
 		}
 
-		thumbnail := resize.Thumbnail(260, 260, img, resize.Lanczos3)
+		// TODO: improve image formats
+		/*thumbnail := resize.Thumbnail(260, 260, img, resize.Lanczos3)
 
 		outt, err := os.Create(uploader.GetDir() + "/test_thumbnail.jpg")
 		if err != nil {
@@ -434,10 +628,41 @@ func uploadImageHandler() http.HandlerFunc {
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to encode image"))
 			return
+		}*/
+
+		// Upload to ipfs
+		listFile, err := utils.GetUnixfsNode(filePath)
+		if err != nil {
+			panic(fmt.Errorf("Could not get File: %s", err))
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		cidFile, err := ipfsNode.Unixfs().Add(ctx, listFile)
+		if err != nil {
+			panic(fmt.Errorf("Could not add File: %s", err))
+		}
+
+		fmt.Println(fmt.Sprintf("Added cover image to IPFS with CID %s\n", cidFile.String()))
+
+		// Remove original image
+		os.Remove(filePath)
+
+		// Update track
+		track, err := models.GetTrack(trackId)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to get track by trackId"))
+		}
+
+		track.Image = cidFile.String()
+		err = track.Update()
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to update track"))
 		}
 
 		res := UploadImageResp{
-			Filename: "test",
+			CID: cidFile.String(),
 		}
 
 		w.Header().Set("Content-Type", "application/json")

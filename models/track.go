@@ -85,6 +85,35 @@ func GetTrack(trackID primitive.ObjectID) (*Track, error) {
 	return &track, nil
 }
 
+func GetTracksByOwner(owner string) (*[]Track, error) {
+	collection := GetTrackCollection()
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+
+	filter := bson.D{
+		{"owner", owner},
+	}
+
+	cursor, err := collection.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	var tracks []Track
+	if err = cursor.All(ctx, &tracks); err != nil {
+		return nil, err
+	}
+
+	return &tracks, nil
+}
+
+func (t *Track) IsCompleted() bool {
+	if t.Title != "" && t.Artists != "" && t.Genre != "" && t.Mood != "" && t.ReleaseDate != "" && t.ReleaseDatePrecision != "" && t.Copyright != "" && t.Visibility != "" && t.Audio != "" && t.Image != "" && t.Duration > 0 {
+		return true
+	}
+
+	return false
+}
+
 // update
 func (t *Track) Update() error {
 	collection := GetTrackCollection()
@@ -150,15 +179,12 @@ func (t *Track) Update() error {
 	if t.Image != "" {
 		fields = append(fields, bson.E{"image", t.Image})
 	}
-	if t.Duration != 0 {
+	if t.Duration > 0 {
 		fields = append(fields, bson.E{"duration", t.Duration})
 	}
-	if t.Explicit {
-		fields = append(fields, bson.E{"explicit", t.Explicit})
-	}
-	if !t.IsDraft {
-		fields = append(fields, bson.E{"is_draft", t.IsDraft})
-	}
+
+	fields = append(fields, bson.E{Key: "explicit", Value: t.Explicit})
+	fields = append(fields, bson.E{Key: "is_draft", Value: !t.IsCompleted()})
 
 	if len(fields) == 0 {
 		return nil

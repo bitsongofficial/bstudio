@@ -46,7 +46,7 @@ func (u *Uploader) IsAudio() bool {
 
 func (u *Uploader) IsImage() bool {
 	contentType := u.GetContentType()
-	return contentType == "image/jpeg"
+	return contentType == "image/jpeg" || contentType == "image/png"
 }
 
 func (u *Uploader) GetDir() string {

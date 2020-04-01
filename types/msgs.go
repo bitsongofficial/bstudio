@@ -12,6 +12,8 @@ const (
 	CodeInvalid            sdk.CodeType = 2
 
 	TypeMsgUpload    = "upload"
+	TypeMsgGetTrack  = "get_track"
+	TypeMsgGetTracks = "get_tracks"
 	TypeMsgEditTrack = "edit_track"
 )
 
@@ -20,6 +22,7 @@ var _ sdk.Msg = MsgUpload{}
 type MsgUpload struct {
 	FromAddress sdk.AccAddress `json:"from_address"`
 	FileHash    string         `json:"file_hash"`
+	TrackId     string         `json:"track_id"`
 }
 
 func (msg MsgUpload) Route() string { return TypeMsgUpload }
@@ -81,10 +84,6 @@ func (msg MsgEditTrack) ValidateBasic() sdk.Error {
 		return sdk.NewError(DefaultCodespace, CodeInvalid, "track id cannot be blank")
 	}
 
-	if msg.Title == "" {
-		return sdk.NewError(DefaultCodespace, CodeInvalid, "title cannot be blank")
-	}
-
 	return nil
 }
 
@@ -95,4 +94,54 @@ func (msg MsgEditTrack) GetSignBytes() []byte {
 // GetSigners defines whose signature is required
 func (msg MsgEditTrack) GetSigners() []sdk.AccAddress {
 	return []sdk.AccAddress{msg.FromAddress}
+}
+
+var _ sdk.Msg = MsgGetTracks{}
+
+type MsgGetTracks struct {
+	FromAddress sdk.AccAddress `json:"from_address"`
+}
+
+func (msg MsgGetTracks) Route() string { return TypeMsgGetTracks }
+func (msg MsgGetTracks) Type() string  { return TypeMsgGetTracks }
+func (msg MsgGetTracks) ValidateBasic() sdk.Error {
+	if msg.FromAddress.Empty() {
+		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "from address cannot be blank")
+	}
+
+	return nil
+}
+
+func (msg MsgGetTracks) GetSignBytes() []byte {
+	return sdk.MustSortJSON(ModuleCdc.MustMarshalJSON(msg))
+}
+
+// GetSigners defines whose signature is required
+func (msg MsgGetTracks) GetSigners() []sdk.AccAddress {
+	return []sdk.AccAddress{msg.FromAddress}
+}
+
+var _ sdk.Msg = MsgGetTrack{}
+
+type MsgGetTrack struct {
+	TrackId string `json:"track_id"`
+}
+
+func (msg MsgGetTrack) Route() string { return TypeMsgGetTrack }
+func (msg MsgGetTrack) Type() string  { return TypeMsgGetTrack }
+func (msg MsgGetTrack) ValidateBasic() sdk.Error {
+	if msg.TrackId == "" {
+		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "track id cannot be blank")
+	}
+
+	return nil
+}
+
+func (msg MsgGetTrack) GetSignBytes() []byte {
+	return sdk.MustSortJSON(ModuleCdc.MustMarshalJSON(msg))
+}
+
+// GetSigners defines whose signature is required
+func (msg MsgGetTrack) GetSigners() []sdk.AccAddress {
+	return []sdk.AccAddress{}
 }
