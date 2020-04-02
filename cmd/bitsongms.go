@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -241,8 +242,7 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 
 	// Upload original file to ipfs
 	err = filepath.Walk(audio.Uploader.GetDir(), func(path string, info os.FileInfo, err error) error {
-		if strings.HasPrefix(path, "original.") {
-			fmt.Println(path)
+		if strings.Contains(path, "original.") {
 			originalFile, err := utils.GetUnixfsNode(path)
 			if err != nil {
 				panic(fmt.Errorf("Could not get File: %s", err))
@@ -253,21 +253,33 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 				panic(fmt.Errorf("Could not add File: %s", err))
 			}
 
-			fmt.Println(fmt.Sprintf("Added original file to IPFS with CID %s\n", cidFile.String()))
+			track.AudioOriginal = cidFile.String()
+			err = track.Update()
+			if err != nil {
+				panic(fmt.Errorf("Could not update track: %s", err))
+			}
+
+			fmt.Printf("Added original file to IPFS with CID %s\n", cidFile.String())
 
 			// Save cid original file to transcoder collection
 			tm.AddOriginal(cidFile.String())
 
+			return io.EOF
+
 		}
 		return nil
 	})
+
+	if err == io.EOF {
+		err = nil
+	}
 
 	if err != nil {
 		panic(err)
 	}
 
 	// remove all files
-	audio.Uploader.RemoveAll()
+	//audio.Uploader.RemoveAll()
 
 	// TODO: Do not forget to pin everything
 

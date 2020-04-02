@@ -55,22 +55,21 @@ type MsgEditTrack struct {
 	TrackId              string         `json:"track_id"`
 	Title                string         `json:"title"`
 	Artists              string         `json:"artists"`
-	Featurings           string         `json:"featurings"`
-	Producers            string         `json:"producers"`
+	Featurings           *string        `json:"featurings,omitempty"`
+	Producers            *string        `json:"producers,omitempty"`
 	Genre                string         `json:"genre"`
 	Mood                 string         `json:"mood"`
 	ReleaseDate          string         `json:"release_date"`
 	ReleaseDatePrecision string         `json:"release_date_precision"`
-	Tags                 string         `json:"tags"`
+	Tags                 *string        `json:"tags,omitempty"`
 	Explicit             bool           `json:"explicit"`
-	Label                string         `json:"label"`
-	Isrc                 string         `json:"isrc"`
-	UpcEan               string         `json:"upc_ean"`
-	Iswc                 string         `json:"iswc"`
-	Credits              string         `json:"credits"`
+	Label                *string        `json:"label,omitempty"`
+	Isrc                 *string        `json:"isrc,omitempty"`
+	UpcEan               *string        `json:"upc_ean,omitempty"`
+	Iswc                 *string        `json:"iswc,omitempty"`
+	Credits              *string        `json:"credits,omitempty"`
 	Copyright            string         `json:"copyright"`
 	Visibility           string         `json:"visibility"`
-	IsDraft              bool           `json:"is_draft"`
 }
 
 func (msg MsgEditTrack) Route() string { return TypeMsgEditTrack }

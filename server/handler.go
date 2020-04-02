@@ -132,10 +132,10 @@ func EditTrackTx(tx authTypes.StdTx) (*models.Track, error) {
 			if editTrackMsg.Artists != "" {
 				track.Artists = editTrackMsg.Artists
 			}
-			if editTrackMsg.Featurings != "" {
+			if editTrackMsg.Featurings != nil {
 				track.Featurings = editTrackMsg.Featurings
 			}
-			if editTrackMsg.Producers != "" {
+			if editTrackMsg.Producers != nil {
 				track.Producers = editTrackMsg.Producers
 			}
 			if editTrackMsg.Genre != "" {
@@ -150,22 +150,22 @@ func EditTrackTx(tx authTypes.StdTx) (*models.Track, error) {
 			if editTrackMsg.ReleaseDatePrecision != "" {
 				track.ReleaseDatePrecision = editTrackMsg.ReleaseDatePrecision
 			}
-			if editTrackMsg.Tags != "" {
+			if editTrackMsg.Tags != nil {
 				track.Tags = editTrackMsg.Tags
 			}
-			if editTrackMsg.Label != "" {
+			if editTrackMsg.Label != nil {
 				track.Label = editTrackMsg.Label
 			}
-			if editTrackMsg.Isrc != "" {
+			if editTrackMsg.Isrc != nil {
 				track.Isrc = editTrackMsg.Isrc
 			}
-			if editTrackMsg.UpcEan != "" {
+			if editTrackMsg.UpcEan != nil {
 				track.UpcEan = editTrackMsg.UpcEan
 			}
-			if editTrackMsg.Iswc != "" {
+			if editTrackMsg.Iswc != nil {
 				track.Iswc = editTrackMsg.Iswc
 			}
-			if editTrackMsg.Credits != "" {
+			if editTrackMsg.Credits != nil {
 				track.Credits = editTrackMsg.Credits
 			}
 			if editTrackMsg.Copyright != "" {
@@ -373,11 +373,10 @@ func tracksHandler(cdc *codec.Codec) http.HandlerFunc {
 }
 
 type UploadAudioResp struct {
-	ID           string  `json:"id"`
-	TranscoderID string  `json:"transcoder_id"`
-	FileName     string  `json:"file_name"`
-	Duration     float32 `json:"duration"`
-	TrackID      string  `json:"track_id"`
+	ID           string `json:"id"`
+	TranscoderID string `json:"transcoder_id"`
+	FileName     string `json:"file_name"`
+	TrackID      string `json:"track_id"`
 }
 
 // @Summary Upload and transcode audio file
@@ -478,7 +477,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 		}
 
 		// Create track model
-		track := models.NewTrack(req.Tx.GetSigners()[0].String(), duration)
+		track := models.NewTrack(header.Filename, req.Tx.GetSigners()[0].String(), duration)
 		if err := track.Insert(); err != nil {
 			uploader.RemoveAll()
 
@@ -496,7 +495,6 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			ID:           uploader.ID.String(),
 			TranscoderID: tm.ID.Hex(),
 			FileName:     uploader.Header.Filename,
-			Duration:     duration,
 			TrackID:      track.ID.Hex(),
 		}
 
