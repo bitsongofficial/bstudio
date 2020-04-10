@@ -110,7 +110,7 @@ func EditTrackTx(tx authTypes.StdTx) (*models.Track, error) {
 			editTrackMsg := msg.(types.MsgEditTrack)
 
 			if err := editTrackMsg.ValidateBasic(); err != nil {
-				return nil, fmt.Errorf("failed to validate msg")
+				return nil, err
 			}
 
 			trackId, err := primitive.ObjectIDFromHex(editTrackMsg.TrackId)
@@ -176,6 +176,12 @@ func EditTrackTx(tx authTypes.StdTx) (*models.Track, error) {
 			}
 
 			track.Explicit = editTrackMsg.Explicit
+
+			track.RewardsUsers = editTrackMsg.RewardsUsers
+			track.RewardsPlaylists = editTrackMsg.RewardsPlaylists
+
+			// TODO FIX: check quota sum = 100
+			track.RightsHolders = editTrackMsg.RightsHolders
 
 			if err := track.Update(); err != nil {
 				return nil, fmt.Errorf("failed to update track")

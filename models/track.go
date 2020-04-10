@@ -37,6 +37,9 @@ type Track struct {
 	AudioOriginal        string             `json:"audio_original" bson:"audio_original"`
 	Image                string             `json:"image" bson:"image"`
 	Duration             float32            `json:"duration" bson:"duration"`
+	RewardsUsers         string             `json:"rewards_users" bson:"rewards_users"`
+	RewardsPlaylists     string             `json:"rewards_playlists" bson:"rewards_playlists"`
+	RightsHolders        string             `json:"rights_holders" bson:"rights_holders"`
 	CreatedAt            time.Time          `json:"created_at" bson:"created_at"`
 }
 
@@ -109,7 +112,7 @@ func GetTracksByOwner(owner string) (*[]Track, error) {
 }
 
 func (t *Track) IsCompleted() bool {
-	if t.Title != "" && t.Artists != "" && t.Genre != "" && t.Mood != "" && t.ReleaseDate != "" && t.ReleaseDatePrecision != "" && t.Copyright != "" && t.Visibility != "" && t.Audio != "" && t.Image != "" && t.Duration > 0 {
+	if t.Title != "" && t.Artists != "" && t.Genre != "" && t.Mood != "" && t.ReleaseDate != "" && t.ReleaseDatePrecision != "" && t.Copyright != "" && t.Visibility != "" && t.Audio != "" && t.Image != "" && t.Duration > 0 && t.RightsHolders != "" && t.RewardsUsers != "" && t.RewardsPlaylists != "" {
 		return true
 	}
 
@@ -190,6 +193,9 @@ func (t *Track) Update() error {
 
 	fields = append(fields, bson.E{Key: "explicit", Value: t.Explicit})
 	fields = append(fields, bson.E{Key: "is_draft", Value: !t.IsCompleted()})
+	fields = append(fields, bson.E{Key: "rights_holders", Value: t.RightsHolders})
+	fields = append(fields, bson.E{Key: "rewards_users", Value: t.RewardsUsers})
+	fields = append(fields, bson.E{Key: "rewards_playlists", Value: t.RewardsPlaylists})
 
 	if len(fields) == 0 {
 		return nil

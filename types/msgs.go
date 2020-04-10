@@ -2,6 +2,7 @@ package types
 
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"strconv"
 )
 
 const (
@@ -69,6 +70,9 @@ type MsgEditTrack struct {
 	Iswc                 *string        `json:"iswc,omitempty"`
 	Credits              *string        `json:"credits,omitempty"`
 	Copyright            string         `json:"copyright"`
+	RewardsUsers         string         `json:"rewards_users"`
+	RewardsPlaylists     string         `json:"rewards_playlists"`
+	RightsHolders        string         `json:"rights_holders"`
 	Visibility           string         `json:"visibility"`
 }
 
@@ -77,6 +81,33 @@ func (msg MsgEditTrack) Type() string  { return TypeMsgEditTrack }
 func (msg MsgEditTrack) ValidateBasic() sdk.Error {
 	if msg.FromAddress.Empty() {
 		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "from address cannot be blank")
+	}
+
+	if msg.RightsHolders == "" {
+		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "rights holders cannot be blank")
+	}
+
+	rewardUsersFloat, err := strconv.ParseFloat(msg.RewardsUsers, 64)
+	if err != nil {
+		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "rewards users error")
+	}
+
+	if rewardUsersFloat <= 0 {
+		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "rewards users must be > 0.01")
+	}
+
+	rewardPlaylistsFloat, err := strconv.ParseFloat(msg.RewardsPlaylists, 64)
+	if err != nil {
+		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "rewards playlists error")
+	}
+
+	if rewardPlaylistsFloat <= 0 {
+		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "rewards playlists must be > 0.01")
+	}
+
+	rewardSum := rewardUsersFloat + rewardPlaylistsFloat
+	if rewardSum > 100 {
+		return sdk.NewError(DefaultCodespace, CodeInvalidFromAddress, "rewards sum must be less than 100")
 	}
 
 	if msg.TrackId == "" {
