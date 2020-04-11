@@ -1,7 +1,7 @@
 package server
 
 import (
-	"encoding/json"
+	"github.com/cosmos/cosmos-sdk/codec"
 	"net/http"
 )
 
@@ -14,6 +14,8 @@ func writeErrorResponse(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	bz, _ := json.Marshal(ErrorResponse{Error: err.Error()})
-	_, _ = w.Write(bz)
+	/*bz, _ := json.Marshal(ErrorResponse{Error: err.Error()})
+	_, _ = w.Write(bz)*/
+
+	_, _ = w.Write(codec.Cdc.MustMarshalJSON(ErrorResponse{Error: err.Error()}))
 }

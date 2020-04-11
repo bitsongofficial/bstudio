@@ -16,19 +16,19 @@ type Track struct {
 	ID                   primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
 	Title                string             `json:"title" bson:"title"`
 	Artists              string             `json:"artists" bson:"artists"`
-	Featurings           *string            `json:"featurings,omitempty" bson:"featurings,omitempty"`
-	Producers            *string            `json:"producers,omitempty" bson:"producers,omitempty"`
+	Featurings           string             `json:"featurings,omitempty" bson:"featurings,omitempty"`
+	Producers            string             `json:"producers,omitempty" bson:"producers,omitempty"`
 	Genre                string             `json:"genre" bson:"genre"`
 	Mood                 string             `json:"mood" bson:"mood"`
 	ReleaseDate          string             `json:"release_date" bson:"release_date"`
 	ReleaseDatePrecision string             `json:"release_date_precision" bson:"release_date_precision"`
-	Tags                 *string            `json:"tags,omitempty" bson:"tags,omitempty"`
+	Tags                 string             `json:"tags,omitempty" bson:"tags,omitempty"`
 	Explicit             bool               `json:"explicit" bson:"explicit"`
-	Label                *string            `json:"label,omitempty" bson:"label,omitempty"`
-	Isrc                 *string            `json:"isrc,omitempty" bson:"isrc,omitempty"`
-	UpcEan               *string            `json:"upc_ean,omitempty" bson:"upc_ean,omitempty"`
-	Iswc                 *string            `json:"iswc,omitempty" bson:"iswc,omitempty"`
-	Credits              *string            `json:"credits,omitempty" bson:"credits,omitempty"`
+	Label                string             `json:"label,omitempty" bson:"label,omitempty"`
+	Isrc                 string             `json:"isrc,omitempty" bson:"isrc,omitempty"`
+	UpcEan               string             `json:"upc_ean,omitempty" bson:"upc_ean,omitempty"`
+	Iswc                 string             `json:"iswc,omitempty" bson:"iswc,omitempty"`
+	Credits              string             `json:"credits,omitempty" bson:"credits,omitempty"`
 	Copyright            string             `json:"copyright" bson:"copyright"`   // RR/CC
 	Visibility           string             `json:"visibility" bson:"visibility"` // public/private
 	Owner                string             `json:"owner" bson:"owner"`
@@ -128,85 +128,39 @@ func (t *Track) Update() error {
 		{"_id", t.ID},
 	}
 
-	var fields bson.D
-
-	if t.Title != "" {
-		fields = append(fields, bson.E{"title", t.Title})
-	}
-	if t.Artists != "" {
-		fields = append(fields, bson.E{"artists", t.Artists})
-	}
-	if t.Featurings != nil {
-		fields = append(fields, bson.E{"featurings", t.Featurings})
-	}
-	if t.Producers != nil {
-		fields = append(fields, bson.E{"producers", t.Producers})
-	}
-	if t.Genre != "" {
-		fields = append(fields, bson.E{"genre", t.Genre})
-	}
-	if t.Mood != "" {
-		fields = append(fields, bson.E{"mood", t.Mood})
-	}
-	if t.ReleaseDate != "" {
-		fields = append(fields, bson.E{"release_date", t.ReleaseDate})
-	}
-	if t.ReleaseDatePrecision != "" {
-		fields = append(fields, bson.E{"release_date_precision", t.ReleaseDatePrecision})
-	}
-	if t.Tags != nil {
-		fields = append(fields, bson.E{"tags", t.Tags})
-	}
-	if t.Label != nil {
-		fields = append(fields, bson.E{"label", t.Label})
-	}
-	if t.Isrc != nil {
-		fields = append(fields, bson.E{"isrc", t.Isrc})
-	}
-	if t.UpcEan != nil {
-		fields = append(fields, bson.E{"upc_ean", t.UpcEan})
-	}
-	if t.Iswc != nil {
-		fields = append(fields, bson.E{"iswc", t.Iswc})
-	}
-	if t.Credits != nil {
-		fields = append(fields, bson.E{"credits", t.Credits})
-	}
-	if t.Copyright != "" {
-		fields = append(fields, bson.E{"copyright", t.Copyright})
-	}
-	if t.Visibility != "" {
-		fields = append(fields, bson.E{"visibility", t.Visibility})
-	}
-	if t.Audio != "" {
-		fields = append(fields, bson.E{"audio", t.Audio})
-	}
-	if t.AudioOriginal != "" {
-		fields = append(fields, bson.E{"audio_original", t.AudioOriginal})
-	}
-	if t.Image != "" {
-		fields = append(fields, bson.E{"image", t.Image})
-	}
-	if t.Duration > 0 {
-		fields = append(fields, bson.E{"duration", t.Duration})
-	}
-
-	fields = append(fields, bson.E{Key: "explicit", Value: t.Explicit})
-	fields = append(fields, bson.E{Key: "is_draft", Value: !t.IsCompleted()})
-	fields = append(fields, bson.E{Key: "rights_holders", Value: t.RightsHolders})
-	fields = append(fields, bson.E{Key: "rewards_users", Value: t.RewardsUsers})
-	fields = append(fields, bson.E{Key: "rewards_playlists", Value: t.RewardsPlaylists})
-
-	if len(fields) == 0 {
-		return nil
+	fields := bson.D{
+		bson.E{Key: "title", Value: t.Title},
+		bson.E{Key: "artists", Value: t.Artists},
+		bson.E{Key: "featurings", Value: t.Featurings},
+		bson.E{Key: "producers", Value: t.Producers},
+		bson.E{Key: "genre", Value: t.Genre},
+		bson.E{Key: "mood", Value: t.Mood},
+		bson.E{Key: "release_date", Value: t.ReleaseDate},
+		bson.E{Key: "release_date_precision", Value: t.ReleaseDatePrecision},
+		bson.E{Key: "tags", Value: t.Tags},
+		bson.E{Key: "label", Value: t.Label},
+		bson.E{Key: "isrc", Value: t.Isrc},
+		bson.E{Key: "upc_ean", Value: t.UpcEan},
+		bson.E{Key: "iswc", Value: t.Iswc},
+		bson.E{Key: "credits", Value: t.Credits},
+		bson.E{Key: "copyright", Value: t.Copyright},
+		bson.E{Key: "visibility", Value: t.Visibility},
+		bson.E{Key: "audio", Value: t.Audio},
+		bson.E{Key: "audio_original", Value: t.AudioOriginal},
+		bson.E{Key: "image", Value: t.Image},
+		bson.E{Key: "duration", Value: t.Duration},
+		bson.E{Key: "explicit", Value: t.Explicit},
+		bson.E{Key: "is_draft", Value: !t.IsCompleted()},
+		bson.E{Key: "rights_holders", Value: t.RightsHolders},
+		bson.E{Key: "rewards_users", Value: t.RewardsUsers},
+		bson.E{Key: "rewards_playlists", Value: t.RewardsPlaylists},
 	}
 
 	update := bson.D{
 		{"$set", fields},
 	}
 
-	_, err := collection.UpdateOne(ctx, filter, update)
-	if err != nil {
+	if _, err := collection.UpdateOne(ctx, filter, update); err != nil {
 		return err
 	}
 

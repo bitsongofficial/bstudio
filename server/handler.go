@@ -10,7 +10,7 @@ import (
 	"github.com/bitsongofficial/bitsong-media-server/transcoder"
 	"github.com/bitsongofficial/bitsong-media-server/types"
 	"github.com/bitsongofficial/bitsong-media-server/utils"
-	"github.com/cosmos/cosmos-sdk/types/rest"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	files "github.com/ipfs/go-ipfs-files"
 	icore "github.com/ipfs/interface-go-ipfs-core"
 	icorepath "github.com/ipfs/interface-go-ipfs-core/path"
@@ -45,10 +45,12 @@ const (
 func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore.CoreAPI, cdc *codec.Codec) {
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
 
+	r.HandleFunc("/api/v1/msg_handler", msgHandler(cdc)).Methods(methodPOST)
+
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, cdc)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(cdc, ipfsNode)).Methods(methodPOST)
 
-	r.HandleFunc("/api/v1/track_edit", trackEditHandler(cdc)).Methods(methodPOST)
+	//r.HandleFunc("/api/v1/track_edit", trackEditHandler(cdc)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/track", trackHandler(cdc)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/tracks", tracksHandler(cdc)).Methods(methodPOST)
 
@@ -94,117 +96,13 @@ func ValidateUploadTx(tx authTypes.StdTx, hash string) (string, error) {
 	return "", nil
 }
 
-func EditTrackTx(tx authTypes.StdTx) (*models.Track, error) {
-	signers := tx.GetSigners()
-	sigs := tx.Signatures
-
-	// Verify signature
-	for _, sig := range sigs {
-		if !bytes.Equal(sig.Address(), signers[0]) {
-			return nil, fmt.Errorf("signature does not match signer address")
-		}
-	}
-
-	for _, msg := range tx.GetMsgs() {
-		if msg.Type() == types.TypeMsgEditTrack {
-			editTrackMsg := msg.(types.MsgEditTrack)
-
-			if err := editTrackMsg.ValidateBasic(); err != nil {
-				return nil, err
-			}
-
-			trackId, err := primitive.ObjectIDFromHex(editTrackMsg.TrackId)
-			if err != nil {
-				return nil, fmt.Errorf("failed to validate track id")
-			}
-
-			track, err := models.GetTrack(trackId)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get track by trackId")
-			}
-			if track.Owner != signers[0].String() {
-				return nil, fmt.Errorf("failed to validate track owner")
-			}
-
-			if editTrackMsg.Title != "" {
-				track.Title = editTrackMsg.Title
-			}
-			if editTrackMsg.Artists != "" {
-				track.Artists = editTrackMsg.Artists
-			}
-			if editTrackMsg.Featurings != nil {
-				track.Featurings = editTrackMsg.Featurings
-			}
-			if editTrackMsg.Producers != nil {
-				track.Producers = editTrackMsg.Producers
-			}
-			if editTrackMsg.Genre != "" {
-				track.Genre = editTrackMsg.Genre
-			}
-			if editTrackMsg.Mood != "" {
-				track.Mood = editTrackMsg.Mood
-			}
-			if editTrackMsg.ReleaseDate != "" {
-				track.ReleaseDate = editTrackMsg.ReleaseDate
-			}
-			if editTrackMsg.ReleaseDatePrecision != "" {
-				track.ReleaseDatePrecision = editTrackMsg.ReleaseDatePrecision
-			}
-			if editTrackMsg.Tags != nil {
-				track.Tags = editTrackMsg.Tags
-			}
-			if editTrackMsg.Label != nil {
-				track.Label = editTrackMsg.Label
-			}
-			if editTrackMsg.Isrc != nil {
-				track.Isrc = editTrackMsg.Isrc
-			}
-			if editTrackMsg.UpcEan != nil {
-				track.UpcEan = editTrackMsg.UpcEan
-			}
-			if editTrackMsg.Iswc != nil {
-				track.Iswc = editTrackMsg.Iswc
-			}
-			if editTrackMsg.Credits != nil {
-				track.Credits = editTrackMsg.Credits
-			}
-			if editTrackMsg.Copyright != "" {
-				track.Copyright = editTrackMsg.Copyright
-			}
-			if editTrackMsg.Visibility != "" {
-				track.Visibility = editTrackMsg.Visibility
-			}
-
-			track.Explicit = editTrackMsg.Explicit
-
-			track.RewardsUsers = editTrackMsg.RewardsUsers
-			track.RewardsPlaylists = editTrackMsg.RewardsPlaylists
-
-			// TODO FIX: check quota sum = 100
-			track.RightsHolders = editTrackMsg.RightsHolders
-
-			if err := track.Update(); err != nil {
-				return nil, fmt.Errorf("failed to update track")
-			}
-
-			return track, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no valid msgs")
-}
-
-type EditTrackResp struct {
-	TrackID string `json:"track_id"`
-}
-
-func trackEditHandler(cdc *codec.Codec) http.HandlerFunc {
+func msgHandler(cdc *codec.Codec) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req TxReq
 
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			rest.WriteErrorResponse(w, http.StatusBadRequest, err.Error())
+			writeErrorResponse(w, http.StatusBadRequest, err)
 			return
 		}
 
@@ -214,26 +112,87 @@ func trackEditHandler(cdc *codec.Codec) http.HandlerFunc {
 			return
 		}
 
-		// EditTrackTx
-		track, err := EditTrackTx(req.Tx)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
+		signers := req.Tx.GetSigners()
+		sigs := req.Tx.Signatures
+
+		// Verify signature
+		for _, sig := range sigs {
+			if !bytes.Equal(sig.Address(), signers[0]) {
+				writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("signature does not match signer address"))
+				return
+			}
 		}
 
-		res := EditTrackResp{
-			TrackID: track.ID.Hex(),
+		for _, msg := range req.Tx.GetMsgs() {
+			if msg.Type() == types.TypeMsgEditTrack {
+				editTrackMsg(w, msg.(types.MsgEditTrack), signers)
+				return
+			}
 		}
-
-		bz, err := json.Marshal(res)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(bz)
 	}
+}
+
+type EditTrackResp struct {
+	TrackID string `json:"track_id"`
+}
+
+func editTrackMsg(w http.ResponseWriter, msg types.MsgEditTrack, signers []sdk.AccAddress) {
+	if err := msg.ValidateBasic(); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("%s", err.Result().Log))
+		return
+	}
+
+	trackId, err := primitive.ObjectIDFromHex(msg.TrackId)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to validate track id"))
+		return
+	}
+
+	track, err := models.GetTrack(trackId)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to get track by trackId"))
+		return
+	}
+
+	if track.Owner != signers[0].String() {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("signer not authorized to edit"))
+		return
+	}
+
+	track.Title = msg.Title
+	track.Artists = msg.Artists
+	track.Featurings = msg.Featurings
+	track.Producers = msg.Producers
+	track.Genre = msg.Genre
+	track.Mood = msg.Mood
+	track.ReleaseDate = msg.ReleaseDate
+	track.ReleaseDatePrecision = msg.ReleaseDatePrecision
+	track.Tags = msg.Tags
+	track.Label = msg.Label
+	track.Isrc = msg.Isrc
+	track.UpcEan = msg.UpcEan
+	track.Iswc = msg.Iswc
+	track.Credits = msg.Credits
+	track.Copyright = msg.Copyright
+	track.Visibility = msg.Visibility
+	track.Explicit = msg.Explicit
+	track.RewardsUsers = msg.RewardsUsers
+	track.RewardsPlaylists = msg.RewardsPlaylists
+	track.RightsHolders = msg.RightsHolders
+
+	if err := track.Update(); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to update track"))
+		return
+	}
+
+	bz, err := json.Marshal(track)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(bz)
 }
 
 func GetTrackTx(tx authTypes.StdTx) (*models.Track, error) {
@@ -272,7 +231,7 @@ func trackHandler(cdc *codec.Codec) http.HandlerFunc {
 
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			rest.WriteErrorResponse(w, http.StatusBadRequest, err.Error())
+			writeErrorResponse(w, http.StatusBadRequest, err)
 			return
 		}
 
@@ -346,7 +305,7 @@ func tracksHandler(cdc *codec.Codec) http.HandlerFunc {
 
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			rest.WriteErrorResponse(w, http.StatusBadRequest, err.Error())
+			writeErrorResponse(w, http.StatusBadRequest, err)
 			return
 		}
 
