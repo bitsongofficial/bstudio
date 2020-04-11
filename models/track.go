@@ -146,7 +146,6 @@ func (t *Track) Update() error {
 		bson.E{Key: "copyright", Value: t.Copyright},
 		bson.E{Key: "visibility", Value: t.Visibility},
 		bson.E{Key: "audio", Value: t.Audio},
-		bson.E{Key: "audio_original", Value: t.AudioOriginal},
 		bson.E{Key: "image", Value: t.Image},
 		bson.E{Key: "duration", Value: t.Duration},
 		bson.E{Key: "explicit", Value: t.Explicit},
@@ -154,6 +153,10 @@ func (t *Track) Update() error {
 		bson.E{Key: "rights_holders", Value: t.RightsHolders},
 		bson.E{Key: "rewards_users", Value: t.RewardsUsers},
 		bson.E{Key: "rewards_playlists", Value: t.RewardsPlaylists},
+	}
+
+	if t.AudioOriginal != "" {
+		fields = append(fields, bson.E{Key: "audio_original", Value: t.AudioOriginal})
 	}
 
 	update := bson.D{

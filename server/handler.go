@@ -50,9 +50,9 @@ func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, cdc)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(cdc, ipfsNode)).Methods(methodPOST)
 
-	//r.HandleFunc("/api/v1/track_edit", trackEditHandler(cdc)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/track", trackHandler(cdc)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/tracks", tracksHandler(cdc)).Methods(methodPOST)
+	// r.HandleFunc("/api/v1/track_edit", trackEditHandler(cdc)).Methods(methodPOST)
+	// r.HandleFunc("/api/v1/track", trackHandler(cdc)).Methods(methodPOST)
+	// r.HandleFunc("/api/v1/tracks", tracksHandler(cdc)).Methods(methodPOST)
 
 	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler()).Methods(methodGET)
 
@@ -128,12 +128,18 @@ func msgHandler(cdc *codec.Codec) http.HandlerFunc {
 				editTrackMsg(w, msg.(types.MsgEditTrack), signers)
 				return
 			}
+
+			if msg.Type() == types.TypeMsgGetTrack {
+				getTrackMsg(w, msg.(types.MsgGetTrack), signers)
+				return
+			}
+
+			if msg.Type() == types.TypeMsgGetTracks {
+				getTracksMsg(w, msg.(types.MsgGetTracks))
+				return
+			}
 		}
 	}
-}
-
-type EditTrackResp struct {
-	TrackID string `json:"track_id"`
 }
 
 func editTrackMsg(w http.ResponseWriter, msg types.MsgEditTrack, signers []sdk.AccAddress) {
@@ -195,146 +201,60 @@ func editTrackMsg(w http.ResponseWriter, msg types.MsgEditTrack, signers []sdk.A
 	_, _ = w.Write(bz)
 }
 
-func GetTrackTx(tx authTypes.StdTx) (*models.Track, error) {
-	for _, msg := range tx.GetMsgs() {
-		if msg.Type() == types.TypeMsgGetTrack {
-			getTrackMsg := msg.(types.MsgGetTrack)
-
-			if err := getTrackMsg.ValidateBasic(); err != nil {
-				return nil, fmt.Errorf("failed to validate msg")
-			}
-
-			trackId, err := primitive.ObjectIDFromHex(getTrackMsg.TrackId)
-			if err != nil {
-				return nil, fmt.Errorf("failed to validate track id")
-			}
-
-			track, err := models.GetTrack(trackId)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get track by trackId")
-			}
-
-			return track, nil
-		}
+func getTrackMsg(w http.ResponseWriter, msg types.MsgGetTrack, signers []sdk.AccAddress) {
+	if err := msg.ValidateBasic(); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("%s", err.Result().Log))
+		return
 	}
 
-	return nil, fmt.Errorf("no valid msgs")
-}
-
-type GetTrackResp struct {
-	Track *models.Track `json:"track"`
-}
-
-func trackHandler(cdc *codec.Codec) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req TxReq
-
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
-
-		err = cdc.UnmarshalJSON(body, &req)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
-			return
-		}
-
-		// GetTrackTx
-		track, err := GetTrackTx(req.Tx)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
-
-		res := GetTrackResp{
-			Track: track,
-		}
-
-		bz, err := json.Marshal(res)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(bz)
-	}
-}
-
-func GetTracksTx(tx authTypes.StdTx) (*[]models.Track, error) {
-	signers := tx.GetSigners()
-	sigs := tx.Signatures
-
-	// Verify signature
-	for _, sig := range sigs {
-		if !bytes.Equal(sig.Address(), signers[0]) {
-			return nil, fmt.Errorf("signature does not match signer address")
-		}
+	trackId, err := primitive.ObjectIDFromHex(msg.TrackId)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to validate track id: %w", err))
+		return
 	}
 
-	for _, msg := range tx.GetMsgs() {
-		if msg.Type() == types.TypeMsgGetTracks {
-			getTracksMsg := msg.(types.MsgGetTracks)
-
-			if err := getTracksMsg.ValidateBasic(); err != nil {
-				return nil, fmt.Errorf("failed to validate msg")
-			}
-
-			owner := getTracksMsg.FromAddress.String()
-			tracks, err := models.GetTracksByOwner(owner)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get tracks")
-			}
-
-			return tracks, nil
-		}
+	track, err := models.GetTrack(trackId)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to get track by trackId: %w", err))
+		return
 	}
 
-	return nil, fmt.Errorf("no valid msgs")
-}
-
-type GetTracksResp struct {
-	Tracks *[]models.Track `json:"tracks"`
-}
-
-func tracksHandler(cdc *codec.Codec) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req TxReq
-
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
-
-		err = cdc.UnmarshalJSON(body, &req)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
-			return
-		}
-
-		// GetTracksTx
-		tracks, err := GetTracksTx(req.Tx)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
-
-		res := GetTracksResp{
-			Tracks: tracks,
-		}
-
-		bz, err := json.Marshal(res)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(bz)
+	if track.Owner != signers[0].String() {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("signer not authorized to get track"))
+		return
 	}
+
+	bz, err := json.Marshal(track)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(bz)
+}
+
+func getTracksMsg(w http.ResponseWriter, msg types.MsgGetTracks) {
+	if err := msg.ValidateBasic(); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("%s", err.Result().Log))
+		return
+	}
+
+	owner := msg.FromAddress.String()
+	tracks, err := models.GetTracksByOwner(owner)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to get tracks"))
+		return
+	}
+
+	bz, err := json.Marshal(tracks)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(bz)
 }
 
 type UploadAudioResp struct {
