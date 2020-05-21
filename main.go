@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/bitsongofficial/bitsong-media-server/cmd"
+	"github.com/bitsongofficial/bstudio/cmd"
 )
 
 func main() {

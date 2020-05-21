@@ -60,13 +60,13 @@ var doc = `{
                     "400": {
                         "description": "Failure to parse the id",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorJson"
                         }
                     },
                     "404": {
-                        "description": "Failure to find the id",
+                        "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorJson"
                         }
                     }
                 }
@@ -101,7 +101,7 @@ var doc = `{
                     "400": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorJson"
                         }
                     }
                 }
@@ -136,7 +136,7 @@ var doc = `{
                     "400": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorJson"
                         }
                     }
                 }
@@ -147,33 +147,27 @@ var doc = `{
         "models.Transcoder": {
             "type": "object",
             "properties": {
-                "_id": {
+                "db": {
                     "type": "string"
                 },
-                "completed_at": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "list": {
-                    "type": "string"
-                },
-                "original": {
-                    "type": "string"
-                },
-                "percentage": {
-                    "type": "integer"
-                },
-                "upload_id": {
+                "id": {
                     "type": "string"
                 }
             }
         },
-        "server.ErrorResponse": {
+        "server.ErrorJson": {
             "type": "object",
             "properties": {
                 "error": {
+                    "type": "object",
+                    "$ref": "#/definitions/server.ErrorJsonBody"
+                }
+            }
+        },
+        "server.ErrorJsonBody": {
+            "type": "object",
+            "properties": {
+                "message": {
                     "type": "string"
                 }
             }
@@ -181,9 +175,6 @@ var doc = `{
         "server.UploadAudioResp": {
             "type": "object",
             "properties": {
-                "duration": {
-                    "type": "number"
-                },
                 "file_name": {
                     "type": "string"
                 },
@@ -201,7 +192,7 @@ var doc = `{
         "server.UploadImageResp": {
             "type": "object",
             "properties": {
-                "filename": {
+                "cid": {
                     "type": "string"
                 }
             }
@@ -221,7 +212,7 @@ type swaggerInfo struct {
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = swaggerInfo{
 	Version:     "0.1",
-	Host:        "localhost:8081",
+	Host:        "localhost:1347",
 	BasePath:    "/api/v1",
 	Schemes:     []string{},
 	Title:       "bitsongms API Docs",

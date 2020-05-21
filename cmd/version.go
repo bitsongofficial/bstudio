@@ -31,7 +31,7 @@ type versionInfo struct {
 func getVersionCmd() *cobra.Command {
 	versionCmd := &cobra.Command{
 		Use:   "version",
-		Short: "Print the version of BitSong Media Server",
+		Short: "Print the version of BitSong Studio",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			verInfo := versionInfo{
 				Version: Version,

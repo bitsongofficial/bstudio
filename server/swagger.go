@@ -8,6 +8,6 @@
 // @license.name CC0
 // @license.url https://creativecommons.org/share-your-work/public-domain/cc0/
 
-// @host localhost:8081
+// @host localhost:1347
 // @BasePath /api/v1
 package server

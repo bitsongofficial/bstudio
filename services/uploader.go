@@ -31,6 +31,10 @@ func (u *Uploader) GetID() string {
 	return u.ID.String()
 }
 
+func (u *Uploader) GetName() string {
+	return u.Header.Filename
+}
+
 func (u *Uploader) GetContentType() string {
 	return u.Header.Header.Get("Content-Type")
 }
@@ -41,7 +45,11 @@ func (u *Uploader) GetExtension() string {
 
 func (u *Uploader) IsAudio() bool {
 	contentType := u.GetContentType()
-	return contentType == "audio/aac" || contentType == "audio/wav" || contentType == "audio/mp3" || contentType == "application/octet-stream"
+	return contentType == "audio/aac" ||
+		contentType == "audio/wav" ||
+		contentType == "audio/mp3" ||
+		contentType == "application/octet-stream" ||
+		contentType == "audio/mpeg"
 }
 
 func (u *Uploader) IsImage() bool {
@@ -56,8 +64,8 @@ func (u *Uploader) GetDir() string {
 	return dir
 }
 
-func (u *Uploader) GetTmpOriginalFileName() string {
-	return u.GetDir() + "original" + u.GetExtension()
+func (u *Uploader) GetOriginalFilePath() string {
+	return u.GetDir() + u.GetName()
 }
 
 func (u *Uploader) GetTmpConvertedFileName() string {
@@ -82,7 +90,7 @@ func (u *Uploader) SaveOriginal() (*os.File, error) {
 	}
 
 	// save file
-	buff, err := os.Create(u.GetTmpOriginalFileName())
+	buff, err := os.Create(u.GetDir() + u.GetName())
 	if err != nil {
 		return nil, err
 	}

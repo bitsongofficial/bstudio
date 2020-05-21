@@ -7,22 +7,22 @@ all: swagger build
 #                               Build / Install                               #
 ###############################################################################
 
-LD_FLAGS = -X github.com/bitsongofficial/bitsong-media-server/cmd.Version=$(VERSION) \
-	-X github.com/bitsongofficial/bitsong-media-server/cmd.Commit=$(COMMIT)
+LD_FLAGS = -X github.com/bitsongofficial/bstudio/cmd.Version=$(VERSION) \
+	-X github.com/bitsongofficial/bstudio/cmd.Commit=$(COMMIT)
 
 BUILD_FLAGS := -ldflags '$(LD_FLAGS)'
 
 build: go.sum
 ifeq ($(OS),Windows_NT)
 	@echo "building bitsongms binary..."
-	@go build -mod=readonly $(BUILD_FLAGS) -o build/bitsongms.exe .
+	@go build -mod=readonly $(BUILD_FLAGS) -o build/bstudio.exe .
 else
 	@echo "building bitsongms binary..."
-	@go build -mod=readonly $(BUILD_FLAGS) -o build/bitsongms .
+	@go build -mod=readonly $(BUILD_FLAGS) -o build/bstudio .
 endif
 
 install: go.sum
-	@echo "installing bitsongms binary..."
+	@echo "installing bstudio binary..."
 	@go install -mod=readonly $(BUILD_FLAGS) .
 
 ###############################################################################

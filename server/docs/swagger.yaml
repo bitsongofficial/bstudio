@@ -2,30 +2,24 @@ basePath: /api/v1
 definitions:
   models.Transcoder:
     properties:
-      _id:
+      db:
         type: string
-      completed_at:
-        type: string
-      created_at:
-        type: string
-      list:
-        type: string
-      original:
-        type: string
-      percentage:
-        type: integer
-      upload_id:
+      id:
         type: string
     type: object
-  server.ErrorResponse:
+  server.ErrorJson:
     properties:
       error:
+        $ref: '#/definitions/server.ErrorJsonBody'
+        type: object
+    type: object
+  server.ErrorJsonBody:
+    properties:
+      message:
         type: string
     type: object
   server.UploadAudioResp:
     properties:
-      duration:
-        type: number
       file_name:
         type: string
       id:
@@ -37,10 +31,10 @@ definitions:
     type: object
   server.UploadImageResp:
     properties:
-      filename:
+      cid:
         type: string
     type: object
-host: localhost:8081
+host: localhost:1347
 info:
   contact:
     email: hello@bitsong.io
@@ -71,11 +65,11 @@ paths:
         "400":
           description: Failure to parse the id
           schema:
-            $ref: '#/definitions/server.ErrorResponse'
+            $ref: '#/definitions/server.ErrorJson'
         "404":
-          description: Failure to find the id
+          description: Not Found
           schema:
-            $ref: '#/definitions/server.ErrorResponse'
+            $ref: '#/definitions/server.ErrorJson'
       summary: Get transcode status
       tags:
       - transcode
@@ -98,7 +92,7 @@ paths:
         "400":
           description: Error
           schema:
-            $ref: '#/definitions/server.ErrorResponse'
+            $ref: '#/definitions/server.ErrorJson'
       summary: Upload and transcode audio file
       tags:
       - upload
@@ -121,7 +115,7 @@ paths:
         "400":
           description: Error
           schema:
-            $ref: '#/definitions/server.ErrorResponse'
+            $ref: '#/definitions/server.ErrorJson'
       summary: Upload and create image file
       tags:
       - upload

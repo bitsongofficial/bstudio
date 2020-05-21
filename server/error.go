@@ -1,21 +1,29 @@
 package server
 
 import (
-	"github.com/cosmos/cosmos-sdk/codec"
+	"encoding/json"
 	"net/http"
 )
 
-// ErrorResponse defines an error response returned upon any request failure.
-type ErrorResponse struct {
-	Error string `json:"error"`
+func writeJSONResponse(rw http.ResponseWriter, code int, result interface{}) {
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(code)
+
+	json.NewEncoder(rw).Encode(result)
 }
 
-func writeErrorResponse(w http.ResponseWriter, status int, err error) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+type ErrorJsonBody struct {
+	Message string `json:"message"`
+}
 
-	/*bz, _ := json.Marshal(ErrorResponse{Error: err.Error()})
-	_, _ = w.Write(bz)*/
+type ErrorJson struct {
+	Error ErrorJsonBody `json:"error"`
+}
 
-	_, _ = w.Write(codec.Cdc.MustMarshalJSON(ErrorResponse{Error: err.Error()}))
+func newErrorJson(message string) ErrorJson {
+	return ErrorJson{
+		Error: ErrorJsonBody{
+			Message: message,
+		},
+	}
 }

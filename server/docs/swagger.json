@@ -13,7 +13,7 @@
         },
         "version": "0.1"
     },
-    "host": "localhost:8081",
+    "host": "localhost:1347",
     "basePath": "/api/v1",
     "paths": {
         "/transcode/{id}": {
@@ -45,13 +45,13 @@
                     "400": {
                         "description": "Failure to parse the id",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorJson"
                         }
                     },
                     "404": {
-                        "description": "Failure to find the id",
+                        "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorJson"
                         }
                     }
                 }
@@ -86,7 +86,7 @@
                     "400": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorJson"
                         }
                     }
                 }
@@ -121,7 +121,7 @@
                     "400": {
                         "description": "Error",
                         "schema": {
-                            "$ref": "#/definitions/server.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorJson"
                         }
                     }
                 }
@@ -132,33 +132,27 @@
         "models.Transcoder": {
             "type": "object",
             "properties": {
-                "_id": {
+                "db": {
                     "type": "string"
                 },
-                "completed_at": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "list": {
-                    "type": "string"
-                },
-                "original": {
-                    "type": "string"
-                },
-                "percentage": {
-                    "type": "integer"
-                },
-                "upload_id": {
+                "id": {
                     "type": "string"
                 }
             }
         },
-        "server.ErrorResponse": {
+        "server.ErrorJson": {
             "type": "object",
             "properties": {
                 "error": {
+                    "type": "object",
+                    "$ref": "#/definitions/server.ErrorJsonBody"
+                }
+            }
+        },
+        "server.ErrorJsonBody": {
+            "type": "object",
+            "properties": {
+                "message": {
                     "type": "string"
                 }
             }
@@ -166,9 +160,6 @@
         "server.UploadAudioResp": {
             "type": "object",
             "properties": {
-                "duration": {
-                    "type": "number"
-                },
                 "file_name": {
                     "type": "string"
                 },
@@ -186,7 +177,7 @@
         "server.UploadImageResp": {
             "type": "object",
             "properties": {
-                "filename": {
+                "cid": {
                     "type": "string"
                 }
             }

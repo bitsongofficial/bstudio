@@ -3,13 +3,14 @@ package transcoder
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/bitsongofficial/bitsong-media-server/services"
+	"github.com/bitsongofficial/bstudio/ds"
+	"github.com/bitsongofficial/bstudio/services"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -22,19 +23,50 @@ type FFProbeFormat struct {
 
 type Transcoder struct {
 	Uploader *services.Uploader
-	Id       primitive.ObjectID
-	TrackID  primitive.ObjectID
 	Format   FFProbeFormat `json:"format"`
+	ds       *ds.Ds
 }
 
-func NewTranscoder(u *services.Uploader, id primitive.ObjectID) *Transcoder {
+func NewTranscoder(u *services.Uploader, ds *ds.Ds) *Transcoder {
 	return &Transcoder{
 		Uploader: u,
-		Id:       id,
+		ds:       ds,
 		Format: FFProbeFormat{
 			ready: false,
 		},
 	}
+}
+
+func (t *Transcoder) Create() error {
+	tidBz, err := t.Uploader.ID.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	if err = t.ds.SetAndCommit(tidBz, []byte(strconv.Itoa(0))); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *Transcoder) UpdatePercentage(p int) error {
+	tidBz, err := t.Uploader.ID.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	_, err = t.ds.Get(tidBz)
+	if err != nil {
+		return err
+	}
+
+	err = t.ds.SetAndCommit(tidBz, []byte(strconv.Itoa(p)))
+	if err != nil {
+		return err
+	}
+
+	return err
 }
 
 func (a *Transcoder) SplitToSegments() error {
@@ -146,14 +178,12 @@ func (a *Transcoder) GetSegments() (AudioSegments, error) {
 }
 
 func (a *Transcoder) RemoveFiles() error {
-	if err := os.Remove(a.Uploader.GetTmpOriginalFileName()); err != nil {
+	if err := os.Remove(a.Uploader.GetOriginalFilePath()); err != nil {
 		return err
 	}
-
 	if err := os.Remove(a.Uploader.GetTmpConvertedFileName()); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -161,7 +191,7 @@ func (a *Transcoder) TranscodeToMp3() error {
 	cmd := exec.Command(
 		"ffmpeg",
 		"-i",
-		a.Uploader.GetTmpOriginalFileName(),
+		a.Uploader.GetOriginalFilePath(),
 		"-acodec",
 		"libmp3lame",
 		"-ar",
@@ -197,7 +227,7 @@ func (a *Transcoder) ffprobe() error {
 		"-v",
 		"error",
 		"-i",
-		a.Uploader.GetTmpOriginalFileName(),
+		a.Uploader.GetOriginalFilePath(),
 		"-print_format",
 		"json",
 		"-show_format",

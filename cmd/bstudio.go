@@ -1,48 +1,36 @@
 package cmd
 
 import (
-	"bytes"
-	"context"
 	"fmt"
-	"github.com/bitsongofficial/bitsong-media-server/ipfs"
-	"github.com/bitsongofficial/bitsong-media-server/models"
-	"github.com/bitsongofficial/bitsong-media-server/transcoder"
-	"github.com/bitsongofficial/bitsong-media-server/types"
-	"github.com/bitsongofficial/bitsong-media-server/utils"
-	"github.com/cosmos/cosmos-sdk/codec"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/bitsongofficial/bstudio/ds"
+	"github.com/bitsongofficial/bstudio/server"
+	"github.com/bitsongofficial/bstudio/transcoder"
 	"github.com/gorilla/mux"
-	icore "github.com/ipfs/interface-go-ipfs-core"
+	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/rs/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
-
-	"github.com/bitsongofficial/bitsong-media-server/server"
 )
 
 const (
 	logLevelJSON = "json"
 	logLevelText = "text"
-	dbPath       = ".bitsongms"
-	listenAddr   = "127.0.0.1:8081"
+	listenAddr   = "127.0.0.1:1347"
 )
 
 var (
 	logLevel  string
 	logFormat string
+	ipfsAddr  string
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "bitsongms",
-	Short: "bitsongms implements a BitSong Media Server utility API.",
+	Use:   "bstudio",
+	Short: "bstudio implements a BitSong Upload and Transcoding utility API.",
 }
 
 func init() {
@@ -59,21 +47,10 @@ func Execute() {
 	}
 }
 
-func makeCodec() *codec.Codec {
-	var cdc = codec.New()
-
-	sdk.RegisterCodec(cdc)
-	types.RegisterCodec(cdc)
-	codec.RegisterCrypto(cdc)
-	codec.RegisterEvidences(cdc)
-
-	return cdc
-}
-
 func getStartCmd() *cobra.Command {
 	startCmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start BitSong Media Server",
+		Short: "Start BitSong Studio API",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logLvl, err := zerolog.ParseLevel(logLevel)
 			if err != nil {
@@ -82,32 +59,32 @@ func getStartCmd() *cobra.Command {
 
 			zerolog.SetGlobalLevel(logLvl)
 
-			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-				if err := os.Mkdir(dbPath, os.ModePerm); err != nil {
+			if _, err := os.Stat(".bstudio"); os.IsNotExist(err) {
+				if err := os.Mkdir(".bstudio", os.ModePerm); err != nil {
 					return err
 				}
 			}
 
-			// SDK Config
-			config := sdk.GetConfig()
-			config.SetBech32PrefixForAccount("bitsong", "bitsongpub")
-			config.Seal()
+			// Start IPFS Shell
+			sh := shell.NewShell(ipfsAddr)
+			if !sh.IsUp() {
+				return fmt.Errorf("ipfs api is down!")
+			}
 
-			// Make Codec
-			cdc := makeCodec()
+			// Create datastore
+			ds := ds.NewDs()
+			defer ds.Db.Close()
 
-			// Start IPFS
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			ipfsNode := ipfs.Start(ctx)
+			// Create context
+			//ctx, cancel := context.WithCancel(context.Background())
+			//defer cancel()
 
 			// make a queue with a capacity of 1 transcoder.
 			queue := make(chan *transcoder.Transcoder, 1)
 
 			go func() {
 				for q := range queue {
-					doTranscode(q, ipfsNode)
+					doTranscode(q, sh)
 				}
 			}()
 
@@ -122,7 +99,7 @@ func getStartCmd() *cobra.Command {
 				//AllowCredentials: true,
 			})
 
-			server.RegisterRoutes(router, queue, ipfsNode, cdc)
+			server.RegisterRoutes(router, queue, sh, ds)
 
 			srv := &http.Server{
 				Handler:      c.Handler(router),
@@ -138,16 +115,18 @@ func getStartCmd() *cobra.Command {
 
 	startCmd.Flags().StringVar(&logLevel, "log-level", zerolog.InfoLevel.String(), "logging level")
 	startCmd.Flags().StringVar(&logFormat, "log-format", logLevelJSON, "logging format; must be either json or text")
+	startCmd.Flags().StringVar(&ipfsAddr, "ipfs-addr", "localhost:5001", "ipfs api address")
 
 	return startCmd
 }
 
-func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
-	tm := &models.Transcoder{
-		ID: audio.Id,
+func doTranscode(audio *transcoder.Transcoder, sh *shell.Shell) {
+	fmt.Println("starting transcoding " + audio.Uploader.ID.String())
+
+	if err := audio.UpdatePercentage(20); err != nil {
+		panic(err)
 	}
 
-	tm.UpdatePercentage(20)
 	// Convert to mp3
 	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("starting conversion to mp3")
 
@@ -156,7 +135,9 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 		return
 	}
 
-	tm.UpdatePercentage(50)
+	if err := audio.UpdatePercentage(50); err != nil {
+		panic(err)
+	}
 
 	// check size compared to original
 
@@ -168,12 +149,15 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	// Get list of segments *.ts
 	// For each segment upload to ipfs
-	err := filepath.Walk(audio.Uploader.GetDir(), func(path string, info os.FileInfo, err error) error {
+	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("uploading to ipfs")
+	cid, err := sh.AddDir(audio.Uploader.GetDir())
+	if err != nil {
+		panic(err)
+	}
+	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("has been uploaded " + cid)
+	/*err := filepath.Walk(audio.Uploader.GetDir(), func(path string, info os.FileInfo, err error) error {
 		if strings.HasSuffix(path, ".ts") {
 			fmt.Println(path)
 			segment, err := utils.GetUnixfsNode(path)
@@ -207,10 +191,6 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 		}
 		return nil
 	})
-
-	if err != nil {
-		panic(err)
-	}
 
 	// Upload list.m3u8 to ipfs
 	listFile, err := utils.GetUnixfsNode(audio.Uploader.GetDir() + "list.m3u8")
@@ -276,14 +256,16 @@ func doTranscode(audio *transcoder.Transcoder, ipfsNode icore.CoreAPI) {
 
 	if err != nil {
 		panic(err)
-	}
+	}*/
 
 	// remove all files
 	//audio.Uploader.RemoveAll()
 
 	// TODO: Do not forget to pin everything
 
-	tm.UpdatePercentage(100)
+	if err := audio.UpdatePercentage(100); err != nil {
+		panic(err)
+	}
 
 	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("transcode completed")
 }

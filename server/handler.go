@@ -1,37 +1,30 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/bitsongofficial/bitsong-media-server/models"
-	"github.com/bitsongofficial/bitsong-media-server/services"
-	"github.com/bitsongofficial/bitsong-media-server/transcoder"
-	"github.com/bitsongofficial/bitsong-media-server/types"
-	"github.com/bitsongofficial/bitsong-media-server/utils"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/bitsongofficial/bstudio/ds"
+	"github.com/bitsongofficial/bstudio/services"
+	"github.com/bitsongofficial/bstudio/transcoder"
+	"github.com/google/uuid"
+	shell "github.com/ipfs/go-ipfs-api"
 	files "github.com/ipfs/go-ipfs-files"
 	icore "github.com/ipfs/interface-go-ipfs-core"
 	icorepath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/nfnt/resize"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 
-	_ "github.com/bitsongofficial/bitsong-media-server/server/docs"
+	_ "github.com/bitsongofficial/bstudio/server/docs"
 	"github.com/gorilla/mux"
 	httpswagger "github.com/swaggo/http-swagger"
-
-	"github.com/cosmos/cosmos-sdk/codec"
-	authTypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 const (
@@ -42,219 +35,17 @@ const (
 )
 
 // RegisterRoutes registers all HTTP routes with the provided mux router.
-func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, ipfsNode icore.CoreAPI, cdc *codec.Codec) {
+func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, sh *shell.Shell, ds *ds.Ds) {
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
 
-	r.HandleFunc("/api/v1/msg_handler", msgHandler(cdc)).Methods(methodPOST)
+	//r.HandleFunc("/api/v1/msg_handler", msgHandler(cdc)).Methods(methodPOST)
 
-	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, cdc)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(cdc, ipfsNode)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, sh, ds)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(sh)).Methods(methodPOST)
 
-	// r.HandleFunc("/api/v1/track_edit", trackEditHandler(cdc)).Methods(methodPOST)
-	// r.HandleFunc("/api/v1/track", trackHandler(cdc)).Methods(methodPOST)
-	// r.HandleFunc("/api/v1/tracks", tracksHandler(cdc)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler(ds)).Methods(methodGET)
 
-	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler()).Methods(methodGET)
-
-	r.HandleFunc("/ipfs/{cid}", getIpfsGatewayHandler(ipfsNode)).Methods(methodGET)
-}
-
-type TxReq struct {
-	Tx authTypes.StdTx `json:"tx"`
-}
-
-func ValidateUploadTx(tx authTypes.StdTx, hash string) (string, error) {
-	signers := tx.GetSigners()
-	sigs := tx.Signatures
-
-	// Verify signature
-	for _, sig := range sigs {
-		if !bytes.Equal(sig.Address(), signers[0]) {
-			return "", fmt.Errorf("signature does not match signer address")
-		}
-	}
-
-	for _, msg := range tx.GetMsgs() {
-		if msg.Type() == types.TypeMsgUpload {
-			uploadMsg := msg.(types.MsgUpload)
-
-			if err := uploadMsg.ValidateBasic(); err != nil {
-				return "", fmt.Errorf("failed to validate msg")
-			}
-
-			if uploadMsg.FileHash != hash {
-				return "", fmt.Errorf("calculated hash does not match file hash")
-			}
-
-			if uploadMsg.TrackId != "" {
-				return uploadMsg.TrackId, nil
-			}
-
-		}
-	}
-
-	return "", nil
-}
-
-func msgHandler(cdc *codec.Codec) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req TxReq
-
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
-
-		err = cdc.UnmarshalJSON(body, &req)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
-			return
-		}
-
-		signers := req.Tx.GetSigners()
-		sigs := req.Tx.Signatures
-
-		// Verify signature
-		for _, sig := range sigs {
-			if !bytes.Equal(sig.Address(), signers[0]) {
-				writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("signature does not match signer address"))
-				return
-			}
-		}
-
-		for _, msg := range req.Tx.GetMsgs() {
-			if msg.Type() == types.TypeMsgEditTrack {
-				editTrackMsg(w, msg.(types.MsgEditTrack), signers)
-				return
-			}
-
-			if msg.Type() == types.TypeMsgGetTrack {
-				getTrackMsg(w, msg.(types.MsgGetTrack), signers)
-				return
-			}
-
-			if msg.Type() == types.TypeMsgGetTracks {
-				getTracksMsg(w, msg.(types.MsgGetTracks))
-				return
-			}
-		}
-	}
-}
-
-func editTrackMsg(w http.ResponseWriter, msg types.MsgEditTrack, signers []sdk.AccAddress) {
-	if err := msg.ValidateBasic(); err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("%s", err.Result().Log))
-		return
-	}
-
-	trackId, err := primitive.ObjectIDFromHex(msg.TrackId)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to validate track id"))
-		return
-	}
-
-	track, err := models.GetTrack(trackId)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to get track by trackId"))
-		return
-	}
-
-	if track.Owner != signers[0].String() {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("signer not authorized to edit"))
-		return
-	}
-
-	track.Title = msg.Title
-	track.Artists = msg.Artists
-	track.Featurings = msg.Featurings
-	track.Producers = msg.Producers
-	track.Genre = msg.Genre
-	track.Mood = msg.Mood
-	track.ReleaseDate = msg.ReleaseDate
-	track.ReleaseDatePrecision = msg.ReleaseDatePrecision
-	track.Tags = msg.Tags
-	track.Label = msg.Label
-	track.Isrc = msg.Isrc
-	track.UpcEan = msg.UpcEan
-	track.Iswc = msg.Iswc
-	track.Credits = msg.Credits
-	track.Copyright = msg.Copyright
-	track.Visibility = msg.Visibility
-	track.Explicit = msg.Explicit
-	track.RewardsUsers = msg.RewardsUsers
-	track.RewardsPlaylists = msg.RewardsPlaylists
-	track.RightsHolders = msg.RightsHolders
-
-	if err := track.Update(); err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to update track"))
-		return
-	}
-
-	bz, err := json.Marshal(track)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(bz)
-}
-
-func getTrackMsg(w http.ResponseWriter, msg types.MsgGetTrack, signers []sdk.AccAddress) {
-	if err := msg.ValidateBasic(); err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("%s", err.Result().Log))
-		return
-	}
-
-	trackId, err := primitive.ObjectIDFromHex(msg.TrackId)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to validate track id: %w", err))
-		return
-	}
-
-	track, err := models.GetTrack(trackId)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to get track by trackId: %w", err))
-		return
-	}
-
-	if track.Owner != signers[0].String() {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("signer not authorized to get track"))
-		return
-	}
-
-	bz, err := json.Marshal(track)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(bz)
-}
-
-func getTracksMsg(w http.ResponseWriter, msg types.MsgGetTracks) {
-	if err := msg.ValidateBasic(); err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("%s", err.Result().Log))
-		return
-	}
-
-	owner := msg.FromAddress.String()
-	tracks, err := models.GetTracksByOwner(owner, msg.IncludeDraft)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to get tracks"))
-		return
-	}
-
-	bz, err := json.Marshal(tracks)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(bz)
+	//r.HandleFunc("/ipfs/{cid}", getIpfsGatewayHandler(ipfsNode)).Methods(methodGET)
 }
 
 type UploadAudioResp struct {
@@ -264,46 +55,36 @@ type UploadAudioResp struct {
 	TrackID      string `json:"track_id"`
 }
 
+type UploadImageResp struct {
+	CID string `json:"cid"`
+}
+
+type TranscoderRes struct {
+	ID         string `json:"id"`
+	Percentage string `json:"percentage"`
+}
+
 // @Summary Upload and transcode audio file
 // @Description Upload, transcode and publish to ipfs an audio
 // @Tags upload
 // @Produce json
 // @Param file formData file true "Audio file"
 // @Success 200 {object} server.UploadAudioResp
-// @Failure 400 {object} server.ErrorResponse "Error"
+// @Failure 400 {object} server.ErrorJson "Error"
 // @Router /upload/audio [post]
-func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.HandlerFunc {
+func uploadAudioHandler(q chan *transcoder.Transcoder, sh *shell.Shell, ds *ds.Ds) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req TxReq
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("file size is greater then 32mb"))
+			return
+		}
 
 		file, header, err := r.FormFile("file")
 		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("file field is required"))
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("file field is required"))
 			return
 		}
 		defer file.Close()
-
-		// Get Tx
-		tx := r.FormValue("tx")
-		err = cdc.UnmarshalJSON([]byte(tx), &req)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
-			return
-		}
-
-		// Calculate File Hash
-		hash, err := utils.CalculateFileHash(file)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to calculate sha256"))
-			return
-		}
-
-		// Validate UploadTx
-		_, err = ValidateUploadTx(req.Tx, hash)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
 
 		log.Info().Str("filename", header.Filename).Msg("handling audio upload...")
 		uploader := services.NewUploader(&file, header)
@@ -314,7 +95,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			uploader.RemoveAll()
 
 			log.Error().Str("content-type", uploader.GetContentType()).Msg("Wrong content type")
-			writeErrorResponse(w, http.StatusUnsupportedMediaType, fmt.Errorf("Wrong content type: %s", uploader.GetContentType()))
+			writeJSONResponse(w, http.StatusUnsupportedMediaType, newErrorJson(fmt.Sprintf("Wrong content type: %s", uploader.GetContentType())))
 			return
 		}
 
@@ -326,29 +107,27 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			uploader.RemoveAll()
 
 			log.Error().Str("filename", uploader.Header.Filename).Msg("Cannot save audio file.")
-
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Cannot save audio file %s", uploader.Header.Filename))
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("Cannot save audio file %s", uploader.Header.Filename)))
 			return
 		}
 
 		// check file size
 		// check duration
-		tm := models.NewTranscoder(uploader.ID)
-		if err := tm.Create(); err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
+
+		audio := transcoder.NewTranscoder(uploader, ds)
+		log.Info().Str("filename", header.Filename).Msg("check audio duration")
+
+		if err := audio.Create(); err != nil {
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(err.Error()))
 			return
 		}
-
-		audio := transcoder.NewTranscoder(uploader, tm.ID)
-		log.Info().Str("filename", header.Filename).Msg("check audio duration")
 
 		duration, err := audio.GetDuration()
 		if err != nil {
 			uploader.RemoveAll()
 
 			log.Error().Str("filename", uploader.Header.Filename).Msg(fmt.Sprintf("Cannot get audio duration: %s", err))
-
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Cannot get audio duration"))
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("Cannot get audio duration"))
 			return
 		}
 
@@ -356,31 +135,19 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			uploader.RemoveAll()
 
 			log.Error().Float32("duration", duration).Msg("File length is too big")
-
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("File length is too big"))
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("File length is too big"))
 			return
 		}
 
-		// Create track model
-		track := models.NewTrack(header.Filename, req.Tx.GetSigners()[0].String(), duration)
-		if err := track.Insert(); err != nil {
-			uploader.RemoveAll()
-
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
-
-		audio.TrackID = track.ID
+		// TODO: Save and publish metadata
 
 		// transcode audio
 		log.Info().Str("filename", header.Filename).Msg("transcode audio")
 		q <- audio
 
 		res := UploadAudioResp{
-			ID:           uploader.ID.String(),
-			TranscoderID: tm.ID.Hex(),
-			FileName:     uploader.Header.Filename,
-			TrackID:      track.ID.Hex(),
+			ID:       uploader.ID.String(),
+			FileName: uploader.Header.Filename,
 		}
 
 		bz, err := json.Marshal(res)
@@ -388,7 +155,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 			uploader.RemoveAll()
 
 			log.Error().Str("filename", uploader.Header.Filename).Msg("Failed to encode response")
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to encode response: %w", err))
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("failed to encode response: %s", err.Error())))
 			return
 		}
 
@@ -397,56 +164,27 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, cdc *codec.Codec) http.Ha
 	}
 }
 
-type UploadImageResp struct {
-	CID string `json:"cid"`
-}
-
 // @Summary Upload and create image file
 // @Description Upload, create and publish to ipfs an image
 // @Tags upload
 // @Produce json
 // @Param file formData file true "Image file"
 // @Success 200 {object} server.UploadImageResp
-// @Failure 400 {object} server.ErrorResponse "Error"
+// @Failure 400 {object} server.ErrorJson "Error"
 // @Router /upload/image [post]
-func uploadImageHandler(cdc *codec.Codec, ipfsNode icore.CoreAPI) http.HandlerFunc {
+func uploadImageHandler(sh *shell.Shell) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req TxReq
+		if err := r.ParseMultipartForm(5 << 20); err != nil {
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("file size is greater then 5mb"))
+			return
+		}
 
 		file, header, err := r.FormFile("file")
 		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("file field is required"))
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("file field is required"))
 			return
 		}
 		defer file.Close()
-
-		// Get Tx
-		tx := r.FormValue("tx")
-		err = cdc.UnmarshalJSON([]byte(tx), &req)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to unmarshal request: %w", err))
-			return
-		}
-
-		// Calculate File Hash
-		hash, err := utils.CalculateFileHash(file)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to calculate sha256"))
-			return
-		}
-
-		// Validate UploadTx
-		trackIdStr, err := ValidateUploadTx(req.Tx, hash)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
-
-		trackId, err := primitive.ObjectIDFromHex(trackIdStr)
-		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, err)
-			return
-		}
 
 		log.Info().Str("filename", header.Filename).Msg("handling image upload...")
 		uploader := services.NewUploader(&file, header)
@@ -457,12 +195,11 @@ func uploadImageHandler(cdc *codec.Codec, ipfsNode icore.CoreAPI) http.HandlerFu
 			uploader.RemoveAll()
 
 			log.Error().Str("content-type", uploader.GetContentType()).Msg("Wrong content type")
-			writeErrorResponse(w, http.StatusUnsupportedMediaType, fmt.Errorf("Wrong content type: %s", uploader.GetContentType()))
+			writeJSONResponse(w, http.StatusUnsupportedMediaType, newErrorJson(fmt.Sprintf("Wrong content type: %s", uploader.GetContentType())))
 			return
 		}
 
 		img, _, _ := image.Decode(file)
-
 		large := resize.Thumbnail(500, 500, img, resize.Lanczos3)
 
 		var filePath string
@@ -477,7 +214,7 @@ func uploadImageHandler(cdc *codec.Codec, ipfsNode icore.CoreAPI) http.HandlerFu
 
 		outl, err := os.Create(filePath)
 		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to create tmp file"))
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson("Failed to create tmp file"))
 			return
 		}
 		defer outl.Close()
@@ -492,60 +229,30 @@ func uploadImageHandler(cdc *codec.Codec, ipfsNode icore.CoreAPI) http.HandlerFu
 		}
 
 		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to encode image"))
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson("Failed to encode image"))
 			return
 		}
-
-		// TODO: improve image formats
-		/*thumbnail := resize.Thumbnail(260, 260, img, resize.Lanczos3)
-
-		outt, err := os.Create(uploader.GetDir() + "/test_thumbnail.jpg")
-		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to create tmp file"))
-			return
-		}
-		defer outt.Close()
-
-		// Encode into jpeg http://blog.golang.org/go-image-package
-		err = jpeg.Encode(outt, thumbnail, nil)
-		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to encode image"))
-			return
-		}*/
 
 		// Upload to ipfs
-		listFile, err := utils.GetUnixfsNode(filePath)
+		f, err := os.Open(filePath)
 		if err != nil {
-			panic(fmt.Errorf("Could not get File: %s", err))
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson("Failed to read image"))
+			return
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		cidFile, err := ipfsNode.Unixfs().Add(ctx, listFile)
+		cid, err := sh.Add(f)
 		if err != nil {
-			panic(fmt.Errorf("Could not add File: %s", err))
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Could not add File: %s", err)))
+			return
 		}
 
-		fmt.Println(fmt.Sprintf("Added cover image to IPFS with CID %s\n", cidFile.String()))
+		fmt.Println(fmt.Sprintf("Added cover image to IPFS with CID %s\n", cid))
 
 		// Remove original image
 		os.Remove(filePath)
 
-		// Update track
-		track, err := models.GetTrack(trackId)
-		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to get track by trackId"))
-		}
-
-		track.Image = cidFile.String()
-		err = track.Update()
-		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("Failed to update track"))
-		}
-
 		res := UploadImageResp{
-			CID: cidFile.String(),
+			CID: cid,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -558,29 +265,31 @@ func uploadImageHandler(cdc *codec.Codec, ipfsNode icore.CoreAPI) http.HandlerFu
 // @Tags transcode
 // @Produce json
 // @Param id path string true "ID"
-// @Success 200 {object} models.Transcoder
-// @Failure 400 {object} server.ErrorResponse "Failure to parse the id"
-// @Failure 404 {object} server.ErrorResponse "Failure to find the id"
+// @Success 200 {object} server.TranscoderResp
+// @Failure 400 {object} server.ErrorJson "Failure to parse the id"
+// @Failure 404 {object} server.ErrorJson to find the id"
 // @Router /transcode/{id} [get]
-func getTranscodeHandler() http.HandlerFunc {
+func getTranscodeHandler(ds *ds.Ds) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var params = mux.Vars(r)
-		id := params["id"]
-
-		pid, err := primitive.ObjectIDFromHex(id)
+		id, err := uuid.Parse(params["id"])
 		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot decode id"))
 			return
 		}
 
-		tm := &models.Transcoder{
-			ID: pid,
+		tidBz, err := id.MarshalBinary()
+		if err != nil {
+			return
 		}
 
-		res, err := tm.Get()
+		data, err := ds.Get(tidBz)
 		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("id not found"))
 			return
+		}
+
+		res := TranscoderRes{
+			ID:         params["id"],
+			Percentage: string(data),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -588,7 +297,7 @@ func getTranscodeHandler() http.HandlerFunc {
 	}
 }
 
-// TODO: add swagger ??
+// TODO: connect shell, add swagger???
 func getIpfsGatewayHandler(ipfsNode icore.CoreAPI) http.HandlerFunc {
 	// similar to https://github.com/ipfs/go-ipfs/blob/master/core/corehttp/gateway_handler.go
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -604,7 +313,7 @@ func getIpfsGatewayHandler(ipfsNode icore.CoreAPI) http.HandlerFunc {
 
 		data, err := ipfsNode.Unixfs().Get(ctx, ipfsCID)
 		if err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot serve content"))
+			//writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot serve content"))
 			return
 		}
 		defer data.Close()
@@ -612,7 +321,7 @@ func getIpfsGatewayHandler(ipfsNode icore.CoreAPI) http.HandlerFunc {
 		content, ok := data.(files.File)
 
 		if !ok {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot serve content"))
+			//writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot serve content"))
 			return
 		}
 
