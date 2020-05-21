@@ -9,7 +9,8 @@ const TypeMsgGetTracks = "get_tracks"
 var _ sdk.Msg = MsgGetTracks{}
 
 type MsgGetTracks struct {
-	FromAddress sdk.AccAddress `json:"from_address"`
+	FromAddress  sdk.AccAddress `json:"from_address"`
+	IncludeDraft bool           `json:"include_draft"`
 }
 
 func (msg MsgGetTracks) Route() string { return TypeMsgGetTracks }

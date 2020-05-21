@@ -241,7 +241,7 @@ func getTracksMsg(w http.ResponseWriter, msg types.MsgGetTracks) {
 	}
 
 	owner := msg.FromAddress.String()
-	tracks, err := models.GetTracksByOwner(owner)
+	tracks, err := models.GetTracksByOwner(owner, msg.IncludeDraft)
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("failed to get tracks"))
 		return

@@ -90,12 +90,16 @@ func GetTrack(trackID primitive.ObjectID) (*Track, error) {
 	return &track, nil
 }
 
-func GetTracksByOwner(owner string) (*[]Track, error) {
+func GetTracksByOwner(owner string, includeDraft bool) (*[]Track, error) {
 	collection := GetTrackCollection()
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
 
 	filter := bson.D{
 		{"owner", owner},
+	}
+
+	if !includeDraft {
+		filter = append(filter, bson.E{"is_draft", false})
 	}
 
 	cursor, err := collection.Find(ctx, filter)
