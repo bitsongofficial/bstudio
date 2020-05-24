@@ -37,14 +37,11 @@ const (
 // RegisterRoutes registers all HTTP routes with the provided mux router.
 func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, sh *shell.Shell, ds *ds.Ds) {
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
-
-	//r.HandleFunc("/api/v1/msg_handler", msgHandler(cdc)).Methods(methodPOST)
-
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, sh, ds)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(sh)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/upload/{id}/status", uploadStatusHandler(ds)).Methods(methodGET)
 
-	r.HandleFunc("/api/v1/transcode/{id}", getTranscodeHandler(ds)).Methods(methodGET)
-
+	//r.HandleFunc("/api/v1/msg_handler", msgHandler(cdc)).Methods(methodPOST)
 	//r.HandleFunc("/ipfs/{cid}", getIpfsGatewayHandler(ipfsNode)).Methods(methodGET)
 }
 
@@ -59,7 +56,7 @@ type UploadImageResp struct {
 	CID string `json:"cid"`
 }
 
-type TranscoderRes struct {
+type UploadStatusResp struct {
 	ID         string `json:"id"`
 	Percentage string `json:"percentage"`
 }
@@ -260,16 +257,16 @@ func uploadImageHandler(sh *shell.Shell) http.HandlerFunc {
 	}
 }
 
-// @Summary Get transcode status
-// @Description Get transcode status by ID.
-// @Tags transcode
+// @Summary Get upload status
+// @Description Get upload status by ID.
+// @Tags upload
 // @Produce json
 // @Param id path string true "ID"
-// @Success 200 {object} server.TranscoderResp
+// @Success 200 {object} server.UploadStatusResp
 // @Failure 400 {object} server.ErrorJson "Failure to parse the id"
 // @Failure 404 {object} server.ErrorJson to find the id"
-// @Router /transcode/{id} [get]
-func getTranscodeHandler(ds *ds.Ds) http.HandlerFunc {
+// @Router /upload/{id}/status [get]
+func uploadStatusHandler(ds *ds.Ds) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var params = mux.Vars(r)
 		id, err := uuid.Parse(params["id"])
@@ -287,13 +284,12 @@ func getTranscodeHandler(ds *ds.Ds) http.HandlerFunc {
 			return
 		}
 
-		res := TranscoderRes{
-			ID:         params["id"],
-			Percentage: string(data),
-		}
+		var status transcoder.UploadStatus
+		_ = json.Unmarshal(data, &status)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(res)
+		json.NewEncoder(w).Encode(status)
+
 	}
 }
 

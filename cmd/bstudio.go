@@ -52,6 +52,9 @@ func getStartCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start BitSong Studio API",
 		RunE: func(cmd *cobra.Command, args []string) error {
+
+			DefaultStudioHome := os.ExpandEnv("$HOME/.bstudio")
+
 			logLvl, err := zerolog.ParseLevel(logLevel)
 			if err != nil {
 				return err
@@ -59,8 +62,8 @@ func getStartCmd() *cobra.Command {
 
 			zerolog.SetGlobalLevel(logLvl)
 
-			if _, err := os.Stat(".bstudio"); os.IsNotExist(err) {
-				if err := os.Mkdir(".bstudio", os.ModePerm); err != nil {
+			if _, err := os.Stat(DefaultStudioHome); os.IsNotExist(err) {
+				if err := os.Mkdir(DefaultStudioHome, os.ModePerm); err != nil {
 					return err
 				}
 			}
@@ -123,7 +126,7 @@ func getStartCmd() *cobra.Command {
 func doTranscode(audio *transcoder.Transcoder, sh *shell.Shell) {
 	fmt.Println("starting transcoding " + audio.Uploader.ID.String())
 
-	if err := audio.UpdatePercentage(20); err != nil {
+	if err := audio.Update(20, nil); err != nil {
 		panic(err)
 	}
 
@@ -135,7 +138,7 @@ func doTranscode(audio *transcoder.Transcoder, sh *shell.Shell) {
 		return
 	}
 
-	if err := audio.UpdatePercentage(50); err != nil {
+	if err := audio.Update(50, nil); err != nil {
 		panic(err)
 	}
 
@@ -149,51 +152,29 @@ func doTranscode(audio *transcoder.Transcoder, sh *shell.Shell) {
 		return
 	}
 
-	// Get list of segments *.ts
-	// For each segment upload to ipfs
-	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("uploading to ipfs")
-	cid, err := sh.AddDir(audio.Uploader.GetDir())
-	if err != nil {
-		panic(err)
-	}
-	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("has been uploaded " + cid)
-	/*err := filepath.Walk(audio.Uploader.GetDir(), func(path string, info os.FileInfo, err error) error {
+	/*err := filepath.Walk(audio.Uploader.GetDir()+"segments/", func(path string, info os.FileInfo, err error) error {
 		if strings.HasSuffix(path, ".ts") {
-			fmt.Println(path)
-			segment, err := utils.GetUnixfsNode(path)
-			if err != nil {
-				panic(fmt.Errorf("Could not get File: %s", err))
-			}
-
-			cidFile, err := ipfsNode.Unixfs().Add(ctx, segment)
-			if err != nil {
-				panic(fmt.Errorf("Could not add File: %s", err))
-			}
-
-			fmt.Println(fmt.Sprintf("Added file to IPFS with CID %s\n", cidFile.String()))
-
 			// Replace string into m3u8
-			listFileName := audio.Uploader.GetDir() + "list.m3u8"
+			listFileName := audio.Uploader.GetDir() + "/format/list.m3u8"
 			list, err := ioutil.ReadFile(listFileName)
 			if err != nil {
-				panic(fmt.Errorf("Cannot read list: %s", err))
+				return fmt.Errorf("cannot read list: %s", err)
 			}
 
-			oldFileName := strings.Replace(path, audio.Uploader.GetDir(), "", -1)
-			newFileName := fmt.Sprintf("%s", cidFile.String())
-
+			oldFileName := strings.Replace(path, audio.Uploader.GetDir()+"segments/", "", -1)
+			//newFileName := fmt.Sprintf("%s", cidFile.String())
 			listReplaced := bytes.Replace(list, []byte(oldFileName), []byte(newFileName), -1)
 
 			// Change segment to hash in list.m3u8
 			if err = ioutil.WriteFile(listFileName, listReplaced, 0666); err != nil {
-				panic(fmt.Errorf("Cannot update list: %s", err))
+				panic(fmt.Errorf("cannot update list: %s", err))
 			}
 		}
 		return nil
-	})
+	})*/
 
 	// Upload list.m3u8 to ipfs
-	listFile, err := utils.GetUnixfsNode(audio.Uploader.GetDir() + "list.m3u8")
+	/*listFile, err := utils.GetUnixfsNode(audio.Uploader.GetDir() + "list.m3u8")
 	if err != nil {
 		panic(fmt.Errorf("Could not get File: %s", err))
 	}
@@ -258,14 +239,29 @@ func doTranscode(audio *transcoder.Transcoder, sh *shell.Shell) {
 		panic(err)
 	}*/
 
-	// remove all files
-	//audio.Uploader.RemoveAll()
+	// remove unused files before to upload the dir to ipfs
+	audio.Uploader.RemoveConverted()
 
-	// TODO: Do not forget to pin everything
+	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("uploading to ipfs")
+	cid, err := sh.AddDir(audio.Uploader.GetDir())
+	if err != nil {
+		panic(err)
+	}
 
-	if err := audio.UpdatePercentage(100); err != nil {
+	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("has been uploaded " + cid)
+
+	// pinning dir
+	if err := sh.Pin(cid); err != nil {
+		panic(err)
+	}
+
+	if err := audio.Update(100, &cid); err != nil {
+		sh.Unpin(cid)
 		panic(err)
 	}
 
 	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("transcode completed")
+
+	// remove all files
+	audio.Uploader.RemoveAll()
 }

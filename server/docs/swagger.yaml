@@ -1,12 +1,5 @@
 basePath: /api/v1
 definitions:
-  models.Transcoder:
-    properties:
-      db:
-        type: string
-      id:
-        type: string
-    type: object
   server.ErrorJson:
     properties:
       error:
@@ -34,6 +27,13 @@ definitions:
       cid:
         type: string
     type: object
+  server.UploadStatusResp:
+    properties:
+      id:
+        type: string
+      percentage:
+        type: string
+    type: object
 host: localhost:1347
 info:
   contact:
@@ -46,9 +46,9 @@ info:
   title: bitsongms API Docs
   version: "0.1"
 paths:
-  /transcode/{id}:
+  /upload/{id}/status:
     get:
-      description: Get transcode status by ID.
+      description: Get upload status by ID.
       parameters:
       - description: ID
         in: path
@@ -61,7 +61,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Transcoder'
+            $ref: '#/definitions/server.UploadStatusResp'
         "400":
           description: Failure to parse the id
           schema:
@@ -70,9 +70,9 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/server.ErrorJson'
-      summary: Get transcode status
+      summary: Get upload status
       tags:
-      - transcode
+      - upload
   /upload/audio:
     post:
       description: Upload, transcode and publish to ipfs an audio

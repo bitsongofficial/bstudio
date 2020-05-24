@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"github.com/bitsongofficial/bstudio/ds"
 	"github.com/bitsongofficial/bstudio/services"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -37,31 +37,62 @@ func NewTranscoder(u *services.Uploader, ds *ds.Ds) *Transcoder {
 	}
 }
 
+type UploadStatus struct {
+	Id         uuid.UUID `json:"id"`
+	Percentage uint      `json:"percentage"`
+	Cid        string    `json:"cid"`
+}
+
 func (t *Transcoder) Create() error {
 	tidBz, err := t.Uploader.ID.MarshalBinary()
 	if err != nil {
 		return err
 	}
 
-	if err = t.ds.SetAndCommit(tidBz, []byte(strconv.Itoa(0))); err != nil {
+	data := UploadStatus{
+		Id:         t.Uploader.ID,
+		Percentage: 0,
+		Cid:        "",
+	}
+	dataBz, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	if err = t.ds.SetAndCommit(tidBz, dataBz); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (t *Transcoder) UpdatePercentage(p int) error {
+func (t *Transcoder) Update(percentage uint, cid *string) error {
 	tidBz, err := t.Uploader.ID.MarshalBinary()
 	if err != nil {
 		return err
 	}
 
-	_, err = t.ds.Get(tidBz)
+	dataBz, err := t.ds.Get(tidBz)
 	if err != nil {
 		return err
 	}
 
-	err = t.ds.SetAndCommit(tidBz, []byte(strconv.Itoa(p)))
+	var status UploadStatus
+	if err := json.Unmarshal(dataBz, &status); err != nil {
+		return err
+	}
+	status.Percentage = percentage
+
+	if cid != nil {
+		status.Cid = *cid
+	}
+
+	dataBz, err = json.Marshal(status)
+	if err != nil {
+		return err
+	}
+
+	err = t.ds.SetAndCommit(tidBz, dataBz)
 	if err != nil {
 		return err
 	}
@@ -70,8 +101,8 @@ func (t *Transcoder) UpdatePercentage(p int) error {
 }
 
 func (a *Transcoder) SplitToSegments() error {
-	newName := a.Uploader.GetDir() + "segment%03d.ts"
-	m3u8FileName := a.Uploader.GetDir() + "list.m3u8"
+	newName := a.Uploader.GetDir() + "segments/segment%03d.ts"
+	m3u8FileName := a.Uploader.GetDir() + "format/list.m3u8"
 
 	cmd := exec.Command(
 		"ffmpeg",
@@ -81,7 +112,7 @@ func (a *Transcoder) SplitToSegments() error {
 		"-hls_time", "5", // 5s for each segment
 		"-hls_segment_type", "mpegts", // hls segment type: Output segment files in MPEG-2 Transport Stream format. This is compatible with all HLS versions.
 		"-hls_list_size", "0", //  If set to 0 the list file will contain all the segments
-		//"-hls_base_url", "segments/",
+		"-hls_base_url", "../segments/",
 		"-hls_segment_filename", newName,
 		"-vn", m3u8FileName,
 	)

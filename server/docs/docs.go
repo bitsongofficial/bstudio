@@ -31,47 +31,6 @@ var doc = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/transcode/{id}": {
-            "get": {
-                "description": "Get transcode status by ID.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "transcode"
-                ],
-                "summary": "Get transcode status",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.Transcoder"
-                        }
-                    },
-                    "400": {
-                        "description": "Failure to parse the id",
-                        "schema": {
-                            "$ref": "#/definitions/server.ErrorJson"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/server.ErrorJson"
-                        }
-                    }
-                }
-            }
-        },
         "/upload/audio": {
             "post": {
                 "description": "Upload, transcode and publish to ipfs an audio",
@@ -141,20 +100,50 @@ var doc = `{
                     }
                 }
             }
+        },
+        "/upload/{id}/status": {
+            "get": {
+                "description": "Get upload status by ID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Get upload status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.UploadStatusResp"
+                        }
+                    },
+                    "400": {
+                        "description": "Failure to parse the id",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorJson"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorJson"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
-        "models.Transcoder": {
-            "type": "object",
-            "properties": {
-                "db": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                }
-            }
-        },
         "server.ErrorJson": {
             "type": "object",
             "properties": {
@@ -193,6 +182,17 @@ var doc = `{
             "type": "object",
             "properties": {
                 "cid": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.UploadStatusResp": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "percentage": {
                     "type": "string"
                 }
             }

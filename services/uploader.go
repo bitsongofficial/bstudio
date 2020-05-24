@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"github.com/google/uuid"
 	"io"
 	"mime/multipart"
@@ -58,14 +59,14 @@ func (u *Uploader) IsImage() bool {
 }
 
 func (u *Uploader) GetDir() string {
-	dir := ".bitsongms/uploader/" + u.GetID() + "/"
+	dir := os.ExpandEnv(fmt.Sprintf("$HOME/.bstudio/uploader/%s/", u.GetID()))
 	u.createDir(dir)
 
 	return dir
 }
 
 func (u *Uploader) GetOriginalFilePath() string {
-	return u.GetDir() + u.GetName()
+	return u.GetDir() + "original/" + u.GetName()
 }
 
 func (u *Uploader) GetTmpConvertedFileName() string {
@@ -84,13 +85,28 @@ func (u *Uploader) createDir(path string) error {
 }
 
 func (u *Uploader) SaveOriginal() (*os.File, error) {
-	// create tmp dir
+	// create root tmp dir
 	if err := u.createDir(u.GetDir()); err != nil {
 		return nil, err
 	}
 
-	// save file
-	buff, err := os.Create(u.GetDir() + u.GetName())
+	// create original dir
+	if err := u.createDir(fmt.Sprintf(`%s%s`, u.GetDir(), "original")); err != nil {
+		return nil, err
+	}
+
+	// create segments dir
+	if err := u.createDir(fmt.Sprintf(`%s%s`, u.GetDir(), "segments")); err != nil {
+		return nil, err
+	}
+
+	// create format dir
+	if err := u.createDir(fmt.Sprintf(`%s%s`, u.GetDir(), "format")); err != nil {
+		return nil, err
+	}
+
+	// save original file
+	buff, err := os.Create(u.GetDir() + "original/" + u.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +118,10 @@ func (u *Uploader) SaveOriginal() (*os.File, error) {
 	}
 
 	return buff, nil
+}
+
+func (u *Uploader) RemoveConverted() error {
+	return os.RemoveAll(u.GetDir() + "converted.mp3")
 }
 
 func (u *Uploader) RemoveAll() error {

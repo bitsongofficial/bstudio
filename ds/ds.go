@@ -12,7 +12,7 @@ type Ds struct {
 
 func NewDs() *Ds {
 	// Open Badger, it will be created if it doesn't exist.
-	db, err := badger.Open(badger.DefaultOptions(".bstudio"))
+	db, err := badger.Open(badger.DefaultOptions(os.ExpandEnv("$HOME/.bstudio/db")))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open badger db: %v", err)
 		os.Exit(1)
