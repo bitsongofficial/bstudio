@@ -22,7 +22,7 @@ definitions:
       transcoder_id:
         type: string
     type: object
-  server.UploadImageResp:
+  server.UploadRawResp:
     properties:
       cid:
         type: string
@@ -111,12 +111,35 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.UploadImageResp'
+            $ref: '#/definitions/server.UploadRawResp'
         "400":
           description: Error
           schema:
             $ref: '#/definitions/server.ErrorJson'
       summary: Upload and create image file
+      tags:
+      - upload
+  /upload/raw:
+    post:
+      description: Upload, create and publish to ipfs a raw data
+      parameters:
+      - description: Raw data
+        in: formData
+        name: raw
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.UploadRawResp'
+        "400":
+          description: Error
+          schema:
+            $ref: '#/definitions/server.ErrorJson'
+      summary: Upload and create raw data
       tags:
       - upload
 swagger: "2.0"

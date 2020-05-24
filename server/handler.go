@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	_ "github.com/bitsongofficial/bstudio/server/docs"
 	"github.com/gorilla/mux"
@@ -39,6 +40,7 @@ func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, sh *shell.Shel
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, sh, ds)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(sh)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/upload/raw", uploadRawHandler(sh)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/{id}/status", uploadStatusHandler(ds)).Methods(methodGET)
 
 	//r.HandleFunc("/api/v1/msg_handler", msgHandler(cdc)).Methods(methodPOST)
@@ -52,7 +54,7 @@ type UploadAudioResp struct {
 	TrackID      string `json:"track_id"`
 }
 
-type UploadImageResp struct {
+type UploadRawResp struct {
 	CID string `json:"cid"`
 }
 
@@ -166,7 +168,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, sh *shell.Shell, ds *ds.D
 // @Tags upload
 // @Produce json
 // @Param file formData file true "Image file"
-// @Success 200 {object} server.UploadImageResp
+// @Success 200 {object} server.UploadRawResp
 // @Failure 400 {object} server.ErrorJson "Error"
 // @Router /upload/image [post]
 func uploadImageHandler(sh *shell.Shell) http.HandlerFunc {
@@ -248,7 +250,35 @@ func uploadImageHandler(sh *shell.Shell) http.HandlerFunc {
 		// Remove original image
 		os.Remove(filePath)
 
-		res := UploadImageResp{
+		res := UploadRawResp{
+			CID: cid,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(res)
+	}
+}
+
+// @Summary Upload and create raw data
+// @Description Upload, create and publish to ipfs a raw data
+// @Tags upload
+// @Produce json
+// @Param raw formData string true "Raw data"
+// @Success 200 {object} server.UploadRawResp
+// @Failure 400 {object} server.ErrorJson "Error"
+// @Router /upload/raw [post]
+func uploadRawHandler(sh *shell.Shell) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		raw := r.FormValue("raw")
+		cid, err := sh.Add(strings.NewReader(raw))
+		if err != nil {
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Could not add File: %s", err)))
+			return
+		}
+
+		fmt.Println(fmt.Sprintf("Added raw content IPFS with CID %s\n", cid))
+
+		res := UploadRawResp{
 			CID: cid,
 		}
 

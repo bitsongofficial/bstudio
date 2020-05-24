@@ -74,7 +74,42 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.UploadImageResp"
+                            "$ref": "#/definitions/server.UploadRawResp"
+                        }
+                    },
+                    "400": {
+                        "description": "Error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorJson"
+                        }
+                    }
+                }
+            }
+        },
+        "/upload/raw": {
+            "post": {
+                "description": "Upload, create and publish to ipfs a raw data",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upload"
+                ],
+                "summary": "Upload and create raw data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Raw data",
+                        "name": "raw",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.UploadRawResp"
                         }
                     },
                     "400": {
@@ -163,7 +198,7 @@
                 }
             }
         },
-        "server.UploadImageResp": {
+        "server.UploadRawResp": {
             "type": "object",
             "properties": {
                 "cid": {
