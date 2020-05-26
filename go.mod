@@ -35,6 +35,7 @@ require (
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/stretchr/testify v1.4.0
 	github.com/swaggo/http-swagger v0.0.0-20200103000832-0e9263c4b516
 	github.com/swaggo/swag v1.6.5
 	github.com/warpfork/go-wish v0.0.0-20190328234359-8b3e70f8e830 // indirect
