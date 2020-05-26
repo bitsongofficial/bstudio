@@ -5,27 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/bitsongofficial/bstudio/ds"
+	_ "github.com/bitsongofficial/bstudio/server/docs"
 	"github.com/bitsongofficial/bstudio/services"
 	"github.com/bitsongofficial/bstudio/transcoder"
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	shell "github.com/ipfs/go-ipfs-api"
 	files "github.com/ipfs/go-ipfs-files"
 	icore "github.com/ipfs/interface-go-ipfs-core"
 	icorepath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/nfnt/resize"
 	"github.com/rs/zerolog/log"
+	httpswagger "github.com/swaggo/http-swagger"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
-
-	_ "github.com/bitsongofficial/bstudio/server/docs"
-	"github.com/gorilla/mux"
-	httpswagger "github.com/swaggo/http-swagger"
 )
 
 const (
@@ -40,7 +39,7 @@ func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, sh *shell.Shel
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, sh, ds)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(sh)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/upload/raw", uploadRawHandler(sh)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/upload/manifest", uploadManifestHandler(sh)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/{id}/status", uploadStatusHandler(ds)).Methods(methodGET)
 
 	//r.HandleFunc("/api/v1/msg_handler", msgHandler(cdc)).Methods(methodPOST)
@@ -48,14 +47,13 @@ func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, sh *shell.Shel
 }
 
 type UploadAudioResp struct {
-	ID           string `json:"id"`
-	TranscoderID string `json:"transcoder_id"`
-	FileName     string `json:"file_name"`
-	TrackID      string `json:"track_id"`
+	ID       string `json:"id"`
+	FileName string `json:"file_name"`
 }
 
-type UploadRawResp struct {
-	CID string `json:"cid"`
+type UploadCidResp struct {
+	CID      string `json:"cid"`
+	FileName string `json:"filename"`
 }
 
 type UploadStatusResp struct {
@@ -168,7 +166,7 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, sh *shell.Shell, ds *ds.D
 // @Tags upload
 // @Produce json
 // @Param file formData file true "Image file"
-// @Success 200 {object} server.UploadRawResp
+// @Success 200 {object} server.UploadCidResp
 // @Failure 400 {object} server.ErrorJson "Error"
 // @Router /upload/image [post]
 func uploadImageHandler(sh *shell.Shell) http.HandlerFunc {
@@ -202,13 +200,16 @@ func uploadImageHandler(sh *shell.Shell) http.HandlerFunc {
 		large := resize.Thumbnail(500, 500, img, resize.Lanczos3)
 
 		var filePath string
+		var fileName string
 
 		if uploader.GetContentType() == "image/jpeg" {
-			filePath = uploader.GetDir() + "/cover_large.jpg"
+			fileName = "cover_large.jpg"
+			filePath = uploader.GetDir() + "/" + fileName
 		}
 
 		if uploader.GetContentType() == "image/png" {
-			filePath = uploader.GetDir() + "/cover_large.png"
+			fileName = "cover_large.png"
+			filePath = uploader.GetDir() + "/" + fileName
 		}
 
 		outl, err := os.Create(filePath)
@@ -250,8 +251,9 @@ func uploadImageHandler(sh *shell.Shell) http.HandlerFunc {
 		// Remove original image
 		os.Remove(filePath)
 
-		res := UploadRawResp{
-			CID: cid,
+		res := UploadCidResp{
+			CID:      cid,
+			FileName: fileName,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -263,22 +265,99 @@ func uploadImageHandler(sh *shell.Shell) http.HandlerFunc {
 // @Description Upload, create and publish to ipfs a raw data
 // @Tags upload
 // @Produce json
-// @Param raw formData string true "Raw data"
-// @Success 200 {object} server.UploadRawResp
+// @Param manifest formData string true "Manifest"
+// @Param audio_cid formData string true "Audio Cid"
+// @Param image_cid formData string true "Image Cid"
+// @Success 200 {object} server.UploadCidResp
 // @Failure 400 {object} server.ErrorJson "Error"
-// @Router /upload/raw [post]
-func uploadRawHandler(sh *shell.Shell) http.HandlerFunc {
+// @Router /upload/manifest [post]
+func uploadManifestHandler(sh *shell.Shell) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		raw := r.FormValue("raw")
-		cid, err := sh.Add(strings.NewReader(raw))
+		manifest := r.FormValue("manifest")
+		audioCid := r.FormValue("audio_cid")
+		_ = r.FormValue("image_cid")
+
+		uid, err := uuid.NewUUID()
 		if err != nil {
-			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Could not add File: %s", err)))
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Could not create a new uid: %s", err)))
 			return
 		}
 
-		fmt.Println(fmt.Sprintf("Added raw content IPFS with CID %s\n", cid))
+		// 1. create tmp dir
+		tmpPath := "/tmp/" + uid.String()
+		if _, err := os.Stat(tmpPath); os.IsNotExist(err) {
+			err = os.MkdirAll(tmpPath, 0755)
+			if err != nil {
+				writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Could not create dir: %s", err)))
+				return
+			}
+		}
 
-		res := UploadRawResp{
+		// 2. save manifest to root tmp dir
+		err = ioutil.WriteFile(tmpPath+"/manifest.json", []byte(manifest), 0644)
+		if err != nil {
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Cannot save manifest: %s", err)))
+			return
+		}
+
+		// 3. download node with audio
+		sh.Get(audioCid, fmt.Sprintf("/tmp/%s/audio", uid.String()))
+
+		// 4. download node with image
+		/*sh.Get(imageCid, fmt.Sprintf("/tmp/%s/image/%s", uid.String(), imageCid))
+		f, err := os.Open(fmt.Sprintf("/tmp/%s/image/%s", uid.String(), imageCid))
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+
+		buffer := make([]byte, 512)
+		_, err = f.Read(buffer)
+		if err != nil {
+			if err != nil {
+				writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Cannot decode content-type: %s", err)))
+				return
+			}
+		}
+
+		// Use the net/http package's handy DectectContentType function. Always returns a valid
+		// content-type by returning "application/octet-stream" if no others seemed to match.
+		contentType := http.DetectContentType(buffer)
+
+		if contentType == "image/png" {
+			os.Rename(fmt.Sprintf("/tmp/%s/image/%s", uid.String(), imageCid), fmt.Sprintf("/tmp/%s/image/500x500.png", uid.String()))
+		}
+
+		if contentType == "image/jpeg" {
+			os.Rename(fmt.Sprintf("/tmp/%s/image/%s", uid.String(), imageCid), fmt.Sprintf("/tmp/%s/image/500x500.jpg", uid.String()))
+		}*/
+
+		// 5. put root node to ipfs
+		cid, err := sh.AddDir(tmpPath)
+		if err != nil {
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Cannot upload root node to ipfs: %s", err)))
+			return
+		}
+
+		// 6. remove tmp file
+		err = os.RemoveAll(tmpPath)
+		if err != nil {
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Cannot remove tmp node: %s", err)))
+			return
+		}
+
+		/*
+			uploadManifest
+			1. send manifest, audiohash, imagehash, signatures of manifest
+			2. create a new dir
+			3. store metadata
+			4. download audio hash and place it into ./audio
+			5. download image hash and place it into ./images
+			6. put dir to ipfs
+			7. return cid
+		*/
+
+		res := UploadCidResp{
 			CID: cid,
 		}
 

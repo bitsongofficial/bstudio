@@ -101,8 +101,8 @@ func (t *Transcoder) Update(percentage uint, cid *string) error {
 }
 
 func (a *Transcoder) SplitToSegments() error {
-	newName := a.Uploader.GetDir() + "segments/segment%03d.ts"
-	m3u8FileName := a.Uploader.GetDir() + "format/list.m3u8"
+	newName := a.Uploader.GetDir() + "hls/segments/segment%03d.ts"
+	m3u8FileName := a.Uploader.GetDir() + "hls/list.m3u8"
 
 	cmd := exec.Command(
 		"ffmpeg",
@@ -112,7 +112,7 @@ func (a *Transcoder) SplitToSegments() error {
 		"-hls_time", "5", // 5s for each segment
 		"-hls_segment_type", "mpegts", // hls segment type: Output segment files in MPEG-2 Transport Stream format. This is compatible with all HLS versions.
 		"-hls_list_size", "0", //  If set to 0 the list file will contain all the segments
-		"-hls_base_url", "../segments/",
+		"-hls_base_url", "segments/",
 		"-hls_segment_filename", newName,
 		"-vn", m3u8FileName,
 	)

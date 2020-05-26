@@ -89,7 +89,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.UploadRawResp"
+                            "$ref": "#/definitions/server.UploadCidResp"
                         }
                     },
                     "400": {
@@ -101,7 +101,7 @@ var doc = `{
                 }
             }
         },
-        "/upload/raw": {
+        "/upload/manifest": {
             "post": {
                 "description": "Upload, create and publish to ipfs a raw data",
                 "produces": [
@@ -114,8 +114,22 @@ var doc = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Raw data",
-                        "name": "raw",
+                        "description": "Manifest",
+                        "name": "manifest",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Audio Cid",
+                        "name": "audio_cid",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Image Cid",
+                        "name": "image_cid",
                         "in": "formData",
                         "required": true
                     }
@@ -124,7 +138,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.UploadRawResp"
+                            "$ref": "#/definitions/server.UploadCidResp"
                         }
                     },
                     "400": {
@@ -204,19 +218,16 @@ var doc = `{
                 },
                 "id": {
                     "type": "string"
-                },
-                "track_id": {
-                    "type": "string"
-                },
-                "transcoder_id": {
-                    "type": "string"
                 }
             }
         },
-        "server.UploadRawResp": {
+        "server.UploadCidResp": {
             "type": "object",
             "properties": {
                 "cid": {
+                    "type": "string"
+                },
+                "filename": {
                     "type": "string"
                 }
             }

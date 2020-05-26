@@ -95,13 +95,13 @@ func (u *Uploader) SaveOriginal() (*os.File, error) {
 		return nil, err
 	}
 
-	// create segments dir
-	if err := u.createDir(fmt.Sprintf(`%s%s`, u.GetDir(), "segments")); err != nil {
+	// create hls dir
+	if err := u.createDir(fmt.Sprintf(`%s%s`, u.GetDir(), "hls")); err != nil {
 		return nil, err
 	}
 
-	// create format dir
-	if err := u.createDir(fmt.Sprintf(`%s%s`, u.GetDir(), "format")); err != nil {
+	// create hls segments dir
+	if err := u.createDir(fmt.Sprintf(`%s%s`, u.GetDir(), "hls/segments")); err != nil {
 		return nil, err
 	}
 

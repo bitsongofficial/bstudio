@@ -17,14 +17,12 @@ definitions:
         type: string
       id:
         type: string
-      track_id:
-        type: string
-      transcoder_id:
-        type: string
     type: object
-  server.UploadRawResp:
+  server.UploadCidResp:
     properties:
       cid:
+        type: string
+      filename:
         type: string
     type: object
   server.UploadStatusResp:
@@ -111,7 +109,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.UploadRawResp'
+            $ref: '#/definitions/server.UploadCidResp'
         "400":
           description: Error
           schema:
@@ -119,13 +117,23 @@ paths:
       summary: Upload and create image file
       tags:
       - upload
-  /upload/raw:
+  /upload/manifest:
     post:
       description: Upload, create and publish to ipfs a raw data
       parameters:
-      - description: Raw data
+      - description: Manifest
         in: formData
-        name: raw
+        name: manifest
+        required: true
+        type: string
+      - description: Audio Cid
+        in: formData
+        name: audio_cid
+        required: true
+        type: string
+      - description: Image Cid
+        in: formData
+        name: image_cid
         required: true
         type: string
       produces:
@@ -134,7 +142,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.UploadRawResp'
+            $ref: '#/definitions/server.UploadCidResp'
         "400":
           description: Error
           schema:
