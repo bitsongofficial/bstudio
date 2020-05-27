@@ -3,7 +3,7 @@ package transcoder
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/bitsongofficial/bstudio/ds"
+	"github.com/bitsongofficial/bstudio/bstudio"
 	"github.com/bitsongofficial/bstudio/services"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -24,10 +24,10 @@ type FFProbeFormat struct {
 type Transcoder struct {
 	Uploader *services.Uploader
 	Format   FFProbeFormat `json:"format"`
-	ds       *ds.Ds
+	ds       *bstudio.Ds
 }
 
-func NewTranscoder(u *services.Uploader, ds *ds.Ds) *Transcoder {
+func NewTranscoder(u *services.Uploader, ds *bstudio.Ds) *Transcoder {
 	return &Transcoder{
 		Uploader: u,
 		ds:       ds,

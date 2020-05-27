@@ -13,11 +13,17 @@ const (
 type BStudio struct {
 	sh     *shell.Shell
 	TQueue chan *Transcoder
+	Ds     *Ds
 }
 
 func NewBStudio(sh *shell.Shell) *BStudio {
+	// Create datastore
+	ds := NewDs()
+	//defer ds.Db.Close()
+
 	return &BStudio{
 		sh:     sh,
+		Ds:     ds,
 		TQueue: make(chan *Transcoder, maxTranscoderQueue),
 	}
 }
@@ -37,4 +43,7 @@ func (bs *BStudio) StartTranscoding(wg *sync.WaitGroup) {
 			q.Transcode(wg)
 		}
 	}()
+}
+func (bs *BStudio) GetTranscodingStatus(cid string) ([]byte, error) {
+	return bs.Ds.Get([]byte(cid))
 }

@@ -87,6 +87,7 @@ func TestBStudio_StoreOriginal(t *testing.T) {
 
 func TestBStudio_StartTranscodingQueue(t *testing.T) {
 	bs := mockBStudio()
+	defer bs.Ds.Db.Close()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -98,4 +99,18 @@ func TestBStudio_StartTranscodingQueue(t *testing.T) {
 	if len(bs.TQueue) > 0 {
 		wg.Wait()
 	}
+
+	res, err := bs.GetTranscodingStatus("QmZWCE29y6omGw8vuiQQpMKehfrhggxytjCd9McxRomsLt")
+	require.NoError(t, err)
+	require.Equal(t, TranscodeStatus{Cid: "QmZWCE29y6omGw8vuiQQpMKehfrhggxytjCd9McxRomsLt", Percentage: 0x64}, res)
+}
+
+func TestBStudio_GetTranscodingStatus(t *testing.T) {
+	bs := mockBStudio()
+	defer bs.Ds.Db.Close()
+
+	res, err := bs.GetTranscodingStatus("QmZWCE29y6omGw8vuiQQpMKehfrhggxytjCd9McxRomsLt")
+	require.NoError(t, err)
+	require.Equal(t, TranscodeStatus{Cid: "QmZWCE29y6omGw8vuiQQpMKehfrhggxytjCd9McxRomsLt", Percentage: 0x64}, res)
+
 }

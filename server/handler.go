@@ -1,29 +1,22 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/bitsongofficial/bstudio/ds"
+	"github.com/bitsongofficial/bstudio/bstudio"
 	_ "github.com/bitsongofficial/bstudio/server/docs"
 	"github.com/bitsongofficial/bstudio/services"
-	"github.com/bitsongofficial/bstudio/transcoder"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	shell "github.com/ipfs/go-ipfs-api"
-	files "github.com/ipfs/go-ipfs-files"
-	icore "github.com/ipfs/interface-go-ipfs-core"
-	icorepath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/nfnt/resize"
 	"github.com/rs/zerolog/log"
 	httpswagger "github.com/swaggo/http-swagger"
 	"image"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 )
 
@@ -35,20 +28,15 @@ const (
 )
 
 // RegisterRoutes registers all HTTP routes with the provided mux router.
-func RegisterRoutes(r *mux.Router, q chan *transcoder.Transcoder, sh *shell.Shell, ds *ds.Ds) {
+func RegisterRoutes(r *mux.Router, bs *bstudio.BStudio) {
 	r.PathPrefix("/swagger/").Handler(httpswagger.WrapHandler)
-	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(q, sh, ds)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(sh)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/upload/manifest", uploadManifestHandler(sh)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/upload/{id}/status", uploadStatusHandler(ds)).Methods(methodGET)
+	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(bs)).Methods(methodPOST)
+	//r.HandleFunc("/api/v1/upload/image", uploadImageHandler(sh)).Methods(methodPOST)
+	//r.HandleFunc("/api/v1/upload/manifest", uploadManifestHandler(sh)).Methods(methodPOST)
+	r.HandleFunc("/api/v1/upload/{cid}/status", uploadStatusHandler(bs)).Methods(methodGET)
 
 	//r.HandleFunc("/api/v1/msg_handler", msgHandler(cdc)).Methods(methodPOST)
 	//r.HandleFunc("/ipfs/{cid}", getIpfsGatewayHandler(ipfsNode)).Methods(methodGET)
-}
-
-type UploadAudioResp struct {
-	ID       string `json:"id"`
-	FileName string `json:"file_name"`
 }
 
 type UploadCidResp struct {
@@ -66,10 +54,10 @@ type UploadStatusResp struct {
 // @Tags upload
 // @Produce json
 // @Param file formData file true "Audio file"
-// @Success 200 {object} server.UploadAudioResp
+// @Success 200 {object} server.UploadCidResp
 // @Failure 400 {object} server.ErrorJson "Error"
 // @Router /upload/audio [post]
-func uploadAudioHandler(q chan *transcoder.Transcoder, sh *shell.Shell, ds *ds.Ds) http.HandlerFunc {
+func uploadAudioHandler(bs *bstudio.BStudio) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("file size is greater then 32mb"))
@@ -83,75 +71,45 @@ func uploadAudioHandler(q chan *transcoder.Transcoder, sh *shell.Shell, ds *ds.D
 		}
 		defer file.Close()
 
+		upload := bstudio.NewUpload(bs, header, file)
 		log.Info().Str("filename", header.Filename).Msg("handling audio upload...")
-		uploader := services.NewUploader(&file, header)
 
 		// check if the file is audio
 		log.Info().Str("filename", header.Filename).Msg("check if the file is audio")
-		if !uploader.IsAudio() {
-			uploader.RemoveAll()
+		if !upload.IsAudio() {
+			//uploader.RemoveAll()
 
-			log.Error().Str("content-type", uploader.GetContentType()).Msg("Wrong content type")
-			writeJSONResponse(w, http.StatusUnsupportedMediaType, newErrorJson(fmt.Sprintf("Wrong content type: %s", uploader.GetContentType())))
+			log.Error().Str("content-type", upload.GetContentType()).Msg("Wrong content type")
+			writeJSONResponse(w, http.StatusUnsupportedMediaType, newErrorJson(fmt.Sprintf("Wrong content type: %s", upload.GetContentType())))
 			return
 		}
 
 		// save original file
-		_, err = uploader.SaveOriginal()
-		log.Info().Str("filename", header.Filename).Msg("file save original")
+		cid, err := upload.StoreOriginal()
+		log.Info().Str("cid: ", cid).Msg("stored file name " + header.Filename)
 
 		if err != nil {
-			uploader.RemoveAll()
-
-			log.Error().Str("filename", uploader.Header.Filename).Msg("Cannot save audio file.")
-			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("Cannot save audio file %s", uploader.Header.Filename)))
+			//uploader.RemoveAll()
+			log.Error().Str("filename", header.Filename).Msg("Cannot save audio file.")
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("Cannot save audio file %s", header.Filename)))
 			return
 		}
 
 		// check file size
 		// check duration
+		ts := bstudio.NewTranscoder(bs, cid)
+		bs.TQueue <- ts
 
-		audio := transcoder.NewTranscoder(uploader, ds)
-		log.Info().Str("filename", header.Filename).Msg("check audio duration")
-
-		if err := audio.Create(); err != nil {
-			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(err.Error()))
-			return
-		}
-
-		duration, err := audio.GetDuration()
-		if err != nil {
-			uploader.RemoveAll()
-
-			log.Error().Str("filename", uploader.Header.Filename).Msg(fmt.Sprintf("Cannot get audio duration: %s", err))
-			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("Cannot get audio duration"))
-			return
-		}
-
-		if duration > MaxAudioLength {
-			uploader.RemoveAll()
-
-			log.Error().Float32("duration", duration).Msg("File length is too big")
-			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("File length is too big"))
-			return
-		}
-
-		// TODO: Save and publish metadata
-
-		// transcode audio
-		log.Info().Str("filename", header.Filename).Msg("transcode audio")
-		q <- audio
-
-		res := UploadAudioResp{
-			ID:       uploader.ID.String(),
-			FileName: uploader.Header.Filename,
+		res := UploadCidResp{
+			CID:      cid,
+			FileName: header.Filename,
 		}
 
 		bz, err := json.Marshal(res)
 		if err != nil {
-			uploader.RemoveAll()
+			//uploader.RemoveAll()
 
-			log.Error().Str("filename", uploader.Header.Filename).Msg("Failed to encode response")
+			log.Error().Str("filename", header.Filename).Msg("Failed to encode response")
 			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("failed to encode response: %s", err.Error())))
 			return
 		}
@@ -370,80 +328,25 @@ func uploadManifestHandler(sh *shell.Shell) http.HandlerFunc {
 // @Description Get upload status by ID.
 // @Tags upload
 // @Produce json
-// @Param id path string true "ID"
+// @Param cid path string true "CID"
 // @Success 200 {object} server.UploadStatusResp
 // @Failure 400 {object} server.ErrorJson "Failure to parse the id"
 // @Failure 404 {object} server.ErrorJson to find the id"
-// @Router /upload/{id}/status [get]
-func uploadStatusHandler(ds *ds.Ds) http.HandlerFunc {
+// @Router /upload/{cid}/status [get]
+func uploadStatusHandler(bs *bstudio.BStudio) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var params = mux.Vars(r)
-		id, err := uuid.Parse(params["id"])
+		res, err := bs.GetTranscodingStatus(params["cid"])
 		if err != nil {
+			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Cannot get transcode status: %s", err)))
 			return
 		}
 
-		tidBz, err := id.MarshalBinary()
-		if err != nil {
-			return
-		}
-
-		data, err := ds.Get(tidBz)
-		if err != nil {
-			return
-		}
-
-		var status transcoder.UploadStatus
-		_ = json.Unmarshal(data, &status)
+		var status bstudio.TranscodeStatus
+		err = json.Unmarshal(res, &status)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(status)
 
-	}
-}
-
-// TODO: connect shell, add swagger???
-func getIpfsGatewayHandler(ipfsNode icore.CoreAPI) http.HandlerFunc {
-	// similar to https://github.com/ipfs/go-ipfs/blob/master/core/corehttp/gateway_handler.go
-	return func(w http.ResponseWriter, r *http.Request) {
-		var params = mux.Vars(r)
-		cid := params["cid"]
-
-		fmt.Println(cid)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		ipfsCID := icorepath.New(cid)
-
-		data, err := ipfsNode.Unixfs().Get(ctx, ipfsCID)
-		if err != nil {
-			//writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot serve content"))
-			return
-		}
-		defer data.Close()
-
-		content, ok := data.(files.File)
-
-		if !ok {
-			//writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("cannot serve content"))
-			return
-		}
-
-		defer content.Close()
-
-		w.Header().Set("Cache-Control", "public, max-age=29030400, immutable")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", url.PathEscape(cid)))
-		w.Header().Set("Content-Type", "application/octet-stream")
-		//w.Header().Set("Content-Type", "application/x-mpegURL")
-		/*w.Header().Set("Content-Length", r.Header.Get("Content-Length"))
-
-		_, err = content.Size()
-		if err != nil {
-			http.Error(w, "cannot serve files with unknown sizes", http.StatusBadGateway)
-			return
-		}*/
-
-		io.Copy(w, content)
 	}
 }

@@ -54,7 +54,7 @@ var doc = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/server.UploadAudioResp"
+                            "$ref": "#/definitions/server.UploadCidResp"
                         }
                     },
                     "400": {
@@ -150,7 +150,7 @@ var doc = `{
                 }
             }
         },
-        "/upload/{id}/status": {
+        "/upload/{cid}/status": {
             "get": {
                 "description": "Get upload status by ID.",
                 "produces": [
@@ -163,8 +163,8 @@ var doc = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "ID",
-                        "name": "id",
+                        "description": "CID",
+                        "name": "cid",
                         "in": "path",
                         "required": true
                     }
@@ -206,17 +206,6 @@ var doc = `{
             "type": "object",
             "properties": {
                 "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "server.UploadAudioResp": {
-            "type": "object",
-            "properties": {
-                "file_name": {
-                    "type": "string"
-                },
-                "id": {
                     "type": "string"
                 }
             }

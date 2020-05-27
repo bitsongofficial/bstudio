@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/bitsongofficial/bstudio/ds"
+	"github.com/bitsongofficial/bstudio/bstudio"
 	"github.com/bitsongofficial/bstudio/server"
-	"github.com/bitsongofficial/bstudio/transcoder"
 	"github.com/gorilla/mux"
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/rs/cors"
@@ -13,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -74,22 +74,12 @@ func getStartCmd() *cobra.Command {
 				return fmt.Errorf("ipfs api is down!")
 			}
 
-			// Create datastore
-			ds := ds.NewDs()
-			defer ds.Db.Close()
+			bs := bstudio.NewBStudio(sh)
+			defer bs.Ds.Db.Close()
 
-			// Create context
-			//ctx, cancel := context.WithCancel(context.Background())
-			//defer cancel()
-
-			// make a queue with a capacity of 1 transcoder.
-			queue := make(chan *transcoder.Transcoder, 1)
-
-			go func() {
-				for q := range queue {
-					doTranscode(q, sh)
-				}
-			}()
+			var wg sync.WaitGroup
+			wg.Add(1)
+			bs.StartTranscoding(&wg)
 
 			// create HTTP router and mount routes
 			router := mux.NewRouter()
@@ -102,7 +92,7 @@ func getStartCmd() *cobra.Command {
 				//AllowCredentials: true,
 			})
 
-			server.RegisterRoutes(router, queue, sh, ds)
+			server.RegisterRoutes(router, bs)
 
 			srv := &http.Server{
 				Handler:      c.Handler(router),
@@ -121,60 +111,4 @@ func getStartCmd() *cobra.Command {
 	startCmd.Flags().StringVar(&ipfsAddr, "ipfs-addr", "localhost:5001", "ipfs api address")
 
 	return startCmd
-}
-
-func doTranscode(audio *transcoder.Transcoder, sh *shell.Shell) {
-	fmt.Println("starting transcoding " + audio.Uploader.ID.String())
-
-	if err := audio.Update(20, nil); err != nil {
-		panic(err)
-	}
-
-	// Convert to mp3
-	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("starting conversion to mp3")
-
-	if err := audio.TranscodeToMp3(); err != nil {
-		log.Error().Str("filename", audio.Uploader.Header.Filename).Msg("failed to transcode")
-		return
-	}
-
-	if err := audio.Update(50, nil); err != nil {
-		panic(err)
-	}
-
-	// check size compared to original
-
-	// spilt mp3 to segments
-	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("starting splitting to segments")
-
-	if err := audio.SplitToSegments(); err != nil {
-		log.Error().Str("filename", audio.Uploader.Header.Filename).Msg("failed to split")
-		return
-	}
-
-	// remove unused files before to upload the dir to ipfs
-	audio.Uploader.RemoveConverted()
-
-	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("uploading to ipfs")
-	cid, err := sh.AddDir(audio.Uploader.GetDir())
-	if err != nil {
-		panic(err)
-	}
-
-	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("has been uploaded " + cid)
-
-	// pinning dir
-	if err := sh.Pin(cid); err != nil {
-		panic(err)
-	}
-
-	if err := audio.Update(100, &cid); err != nil {
-		sh.Unpin(cid)
-		panic(err)
-	}
-
-	log.Info().Str("filename", audio.Uploader.Header.Filename).Msg("transcode completed")
-
-	// remove all files
-	audio.Uploader.RemoveAll()
 }

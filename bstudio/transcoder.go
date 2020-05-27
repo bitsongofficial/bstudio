@@ -2,6 +2,7 @@ package bstudio
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -17,6 +18,11 @@ type Transcoder struct {
 type TranscodeResult struct {
 	mp3Cid string
 	hlsCid string
+}
+
+type TranscodeStatus struct {
+	Cid        string `json:"cid"`
+	Percentage uint   `json:"percentage"`
 }
 
 func NewTranscoder(bs *BStudio, cid string) *Transcoder {
@@ -38,6 +44,23 @@ func (t *Transcoder) GetCidDuration() (float32, error) {
 }
 func (t *Transcoder) Transcode(wg *sync.WaitGroup) (*TranscodeResult, error) {
 	defer wg.Done()
+
+	// create record into badger
+	data := TranscodeStatus{
+		Cid:        t.cid,
+		Percentage: 0,
+	}
+	dataBz, err := json.Marshal(data)
+	if err != nil {
+		return &TranscodeResult{}, err
+	}
+
+	// save initial status
+	if err = t.bs.Ds.SetAndCommit([]byte(t.cid), dataBz); err != nil {
+		panic(err)
+		return &TranscodeResult{}, err
+	}
+
 	// switch type transcoding audio/video
 	// case:
 	// transcode to mp3
@@ -59,6 +82,31 @@ func (t *Transcoder) Transcode(wg *sync.WaitGroup) (*TranscodeResult, error) {
 	}, err
 }
 
+func (t *Transcoder) updateStatus(percentage uint) error {
+	dataBz, err := t.bs.Ds.Get([]byte(t.cid))
+	if err != nil {
+		return err
+	}
+
+	var status TranscodeStatus
+	if err := json.Unmarshal(dataBz, &status); err != nil {
+		return err
+	}
+	status.Percentage = percentage
+
+	dataBz, err = json.Marshal(status)
+	if err != nil {
+		return err
+	}
+
+	err = t.bs.Ds.SetAndCommit([]byte(t.cid), dataBz)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
 func (t *Transcoder) getCid() (*string, error) {
 	tmpPath := fmt.Sprintf("/tmp/%s", t.cid)
 	err := t.bs.Get(t.cid, tmpPath)
@@ -72,6 +120,10 @@ func (t *Transcoder) transcodeCidToMp3() (string, error) {
 	tmpPath, err := t.getCid()
 	if err != nil {
 		return "", err
+	}
+
+	if err := t.updateStatus(5); err != nil {
+		panic(err)
 	}
 
 	outTmpPath := *tmpPath + ".mp3"
@@ -107,6 +159,11 @@ func (t *Transcoder) transcodeCidToMp3() (string, error) {
 	}
 
 	f, _ := os.Open(outTmpPath)
+
+	if err := t.updateStatus(30); err != nil {
+		panic(err)
+	}
+
 	return t.bs.Add(f)
 }
 func (t *Transcoder) transcodeMp3ToHls() (string, error) {
@@ -134,6 +191,10 @@ func (t *Transcoder) transcodeMp3ToHls() (string, error) {
 	segmentFilePattern := tmpHlsSegmentsPath + "/segment%03d.ts"
 	m3u8FileName := tmpHlsPath + "/playlist.m3u8"
 
+	if err := t.updateStatus(40); err != nil {
+		panic(err)
+	}
+
 	cmd := exec.Command(
 		"ffmpeg",
 		"-i", tmpMp3Path,
@@ -158,9 +219,17 @@ func (t *Transcoder) transcodeMp3ToHls() (string, error) {
 		return "", err
 	}
 
+	if err := t.updateStatus(80); err != nil {
+		panic(err)
+	}
+
 	hlsCid, err := t.bs.AddDir(tmpHlsPath)
 	if err != nil {
 		return "", err
+	}
+
+	if err := t.updateStatus(100); err != nil {
+		panic(err)
 	}
 
 	return hlsCid, err

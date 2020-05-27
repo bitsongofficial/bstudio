@@ -11,13 +11,6 @@ definitions:
       message:
         type: string
     type: object
-  server.UploadAudioResp:
-    properties:
-      file_name:
-        type: string
-      id:
-        type: string
-    type: object
   server.UploadCidResp:
     properties:
       cid:
@@ -44,13 +37,13 @@ info:
   title: bitsongms API Docs
   version: "0.1"
 paths:
-  /upload/{id}/status:
+  /upload/{cid}/status:
     get:
       description: Get upload status by ID.
       parameters:
-      - description: ID
+      - description: CID
         in: path
-        name: id
+        name: cid
         required: true
         type: string
       produces:
@@ -86,7 +79,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.UploadAudioResp'
+            $ref: '#/definitions/server.UploadCidResp'
         "400":
           description: Error
           schema:
