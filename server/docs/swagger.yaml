@@ -112,21 +112,11 @@ paths:
       - upload
   /upload/manifest:
     post:
-      description: Upload, create and publish to ipfs a raw data
+      description: Upload, create and publish to ipfs a manifest data
       parameters:
       - description: Manifest
         in: formData
         name: manifest
-        required: true
-        type: string
-      - description: Audio Cid
-        in: formData
-        name: audio_cid
-        required: true
-        type: string
-      - description: Image Cid
-        in: formData
-        name: image_cid
         required: true
         type: string
       produces:

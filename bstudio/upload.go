@@ -27,6 +27,10 @@ func (u *Upload) IsAudio() bool {
 		contentType == "application/octet-stream" ||
 		contentType == "audio/mpeg"
 }
+func (u *Upload) IsImage() bool {
+	contentType := u.GetContentType()
+	return contentType == "image/jpeg"
+}
 
 func (u *Upload) StoreOriginal() (string, error) {
 	return u.bs.Add(u.file)

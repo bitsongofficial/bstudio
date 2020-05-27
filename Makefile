@@ -1,7 +1,7 @@
 VERSION := $(shell echo $(shell git describe --tags) | sed 's/^v//')
 COMMIT  := $(shell git log -1 --format='%H')
 
-all: swagger build
+all: swagger build install
 
 ###############################################################################
 #                               Build / Install                               #
@@ -14,10 +14,10 @@ BUILD_FLAGS := -ldflags '$(LD_FLAGS)'
 
 build: go.sum
 ifeq ($(OS),Windows_NT)
-	@echo "building bitsongms binary..."
+	@echo "building bstudio binary..."
 	@go build -mod=readonly $(BUILD_FLAGS) -o build/bstudio.exe .
 else
-	@echo "building bitsongms binary..."
+	@echo "building bstudio binary..."
 	@go build -mod=readonly $(BUILD_FLAGS) -o build/bstudio .
 endif
 

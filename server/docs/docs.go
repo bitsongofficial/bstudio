@@ -103,7 +103,7 @@ var doc = `{
         },
         "/upload/manifest": {
             "post": {
-                "description": "Upload, create and publish to ipfs a raw data",
+                "description": "Upload, create and publish to ipfs a manifest data",
                 "produces": [
                     "application/json"
                 ],
@@ -116,20 +116,6 @@ var doc = `{
                         "type": "string",
                         "description": "Manifest",
                         "name": "manifest",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Audio Cid",
-                        "name": "audio_cid",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Image Cid",
-                        "name": "image_cid",
                         "in": "formData",
                         "required": true
                     }

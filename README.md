@@ -28,11 +28,11 @@ _NOTE: This is alpha software. Please contact us if you aim to run it in product
     # Install the app into your $GOBIN
     make all
     # Now you should be able to run the following commands:
-    ./build/bstudio help
+    bstudio help
     ```
     The latest `bstudio version` is now installed.
 3. **Run BStudio**
 	```bash
-	./build/bstudio start
+	bstudio start
 	```
 5. [Test with Swagger](http://localhost:1347/swagger/index.html)
