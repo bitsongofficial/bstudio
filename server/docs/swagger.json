@@ -1,8 +1,8 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "Swagger documentation for the BitSong Media Server service API.",
-        "title": "bitsongms API Docs",
+        "description": "Swagger documentation for BStudio service API.",
+        "title": "BStudio API Docs",
         "contact": {
             "name": "BitSong",
             "email": "hello@bitsong.io"

@@ -236,8 +236,8 @@ var SwaggerInfo = swaggerInfo{
 	Host:        "localhost:1347",
 	BasePath:    "/api/v1",
 	Schemes:     []string{},
-	Title:       "bitsongms API Docs",
-	Description: "Swagger documentation for the BitSong Media Server service API.",
+	Title:       "BStudio API Docs",
+	Description: "Swagger documentation for BStudio service API.",
 }
 
 type s struct{}

@@ -1,6 +1,6 @@
-// @title bitsongms API Docs
+// @title BStudio API Docs
 // @version 0.1
-// @description Swagger documentation for the BitSong Media Server service API.
+// @description Swagger documentation for BStudio service API.
 
 // @contact.name BitSong
 // @contact.email hello@bitsong.io

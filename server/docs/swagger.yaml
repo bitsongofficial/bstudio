@@ -30,11 +30,11 @@ info:
   contact:
     email: hello@bitsong.io
     name: BitSong
-  description: Swagger documentation for the BitSong Media Server service API.
+  description: Swagger documentation for BStudio service API.
   license:
     name: CC0
     url: https://creativecommons.org/share-your-work/public-domain/cc0/
-  title: bitsongms API Docs
+  title: BStudio API Docs
   version: "0.1"
 paths:
   /upload/{cid}/status:
