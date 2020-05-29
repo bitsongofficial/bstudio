@@ -47,3 +47,7 @@ func (bs *BStudio) StartTranscoding(wg *sync.WaitGroup) {
 func (bs *BStudio) GetTranscodingStatus(cid string) ([]byte, error) {
 	return bs.Ds.Get([]byte(cid))
 }
+
+func (bs *BStudio) Subscribe() (*shell.PubSubSubscription, error) {
+	return bs.sh.PubSubSubscribe("bstudio")
+}

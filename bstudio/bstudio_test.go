@@ -2,6 +2,7 @@ package bstudio
 
 import (
 	"bytes"
+	"fmt"
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -14,7 +15,7 @@ import (
 )
 
 const (
-	ipfsAddr = "localhost:5001"
+	ipfsAddr = "78.47.190.31:5001"
 )
 
 func mockFile() (*bytes.Buffer, *multipart.Writer, error) {
@@ -113,4 +114,17 @@ func TestBStudio_GetTranscodingStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, TranscodeStatus{Cid: "QmZWCE29y6omGw8vuiQQpMKehfrhggxytjCd9McxRomsLt", Percentage: 0x64}, res)
 
+}
+
+func TestBStudio_Subscribe(t *testing.T) {
+	bs := mockBStudio()
+	defer bs.Ds.Db.Close()
+
+	pub, err := bs.Subscribe()
+	require.NoError(t, err)
+
+	msg, err := pub.Next()
+	require.NoError(t, err)
+
+	fmt.Println(msg)
 }
