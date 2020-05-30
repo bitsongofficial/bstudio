@@ -3,7 +3,6 @@ package bstudio
 import (
 	shell "github.com/ipfs/go-ipfs-api"
 	"io"
-	"sync"
 )
 
 const (
@@ -37,12 +36,10 @@ func (bs *BStudio) AddDir(dir string) (string, error) {
 func (bs *BStudio) Get(cid, output string) error {
 	return bs.sh.Get(cid, output)
 }
-func (bs *BStudio) StartTranscoding(wg *sync.WaitGroup) {
-	go func() {
-		for q := range bs.TQueue {
-			q.Transcode(wg)
-		}
-	}()
+func (bs *BStudio) StartTranscoding() {
+	for q := range bs.TQueue {
+		q.Transcode()
+	}
 }
 func (bs *BStudio) GetTranscodingStatus(cid string) ([]byte, error) {
 	return bs.Ds.Get([]byte(cid))

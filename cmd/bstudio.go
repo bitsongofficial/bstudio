@@ -79,7 +79,8 @@ func getStartCmd() *cobra.Command {
 
 			var wg sync.WaitGroup
 			wg.Add(1)
-			bs.StartTranscoding(&wg)
+			go bs.StartTranscoding()
+			defer wg.Done()
 
 			// create HTTP router and mount routes
 			router := mux.NewRouter()

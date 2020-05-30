@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"sync"
 )
 
 type Transcoder struct {
@@ -42,9 +41,7 @@ func (t *Transcoder) GetCidDuration() (float32, error) {
 
 	return ffprobe.GetDuration(), err
 }
-func (t *Transcoder) Transcode(wg *sync.WaitGroup) (*TranscodeResult, error) {
-	defer wg.Done()
-
+func (t *Transcoder) Transcode() (*TranscodeResult, error) {
 	// create record into badger
 	data := TranscodeStatus{
 		Cid:        t.cid,
