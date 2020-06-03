@@ -21,6 +21,7 @@ type TranscodeResult struct {
 
 type TranscodeStatus struct {
 	Cid        string `json:"cid"`
+	HlsCid     string `json:"hls_cid"`
 	Percentage uint   `json:"percentage"`
 }
 
@@ -79,7 +80,7 @@ func (t *Transcoder) Transcode() (*TranscodeResult, error) {
 	}, err
 }
 
-func (t *Transcoder) updateStatus(percentage uint) error {
+func (t *Transcoder) updateStatus(percentage uint, hlsCid string) error {
 	dataBz, err := t.bs.Ds.Get([]byte(t.cid))
 	if err != nil {
 		return err
@@ -90,6 +91,9 @@ func (t *Transcoder) updateStatus(percentage uint) error {
 		return err
 	}
 	status.Percentage = percentage
+	if hlsCid != "" {
+		status.HlsCid = hlsCid
+	}
 
 	dataBz, err = json.Marshal(status)
 	if err != nil {
@@ -119,7 +123,7 @@ func (t *Transcoder) transcodeCidToMp3() (string, error) {
 		return "", err
 	}
 
-	if err := t.updateStatus(5); err != nil {
+	if err := t.updateStatus(5, ""); err != nil {
 		panic(err)
 	}
 
@@ -157,7 +161,7 @@ func (t *Transcoder) transcodeCidToMp3() (string, error) {
 
 	f, _ := os.Open(outTmpPath)
 
-	if err := t.updateStatus(30); err != nil {
+	if err := t.updateStatus(30, ""); err != nil {
 		panic(err)
 	}
 
@@ -176,19 +180,10 @@ func (t *Transcoder) transcodeMp3ToHls() (string, error) {
 		}
 	}
 
-	// create tmp hls segments dir
-	tmpHlsSegmentsPath := fmt.Sprintf("/tmp/%s-hls/segments", t.cid)
-	if _, err := os.Stat(tmpHlsSegmentsPath); os.IsNotExist(err) {
-		err = os.MkdirAll(tmpHlsSegmentsPath, 0755)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	segmentFilePattern := tmpHlsSegmentsPath + "/segment%03d.ts"
+	segmentFilePattern := tmpHlsPath + "/segment%03d.ts"
 	m3u8FileName := tmpHlsPath + "/playlist.m3u8"
 
-	if err := t.updateStatus(40); err != nil {
+	if err := t.updateStatus(40, ""); err != nil {
 		panic(err)
 	}
 
@@ -200,7 +195,7 @@ func (t *Transcoder) transcodeMp3ToHls() (string, error) {
 		"-hls_time", "5", // 5s for each segment
 		"-hls_segment_type", "mpegts", // hls segment type: Output segment files in MPEG-2 Transport Stream format. This is compatible with all HLS versions.
 		"-hls_list_size", "0", //  If set to 0 the list file will contain all the segments
-		"-hls_base_url", "segments/",
+		//"-hls_base_url", "segments/",
 		"-hls_segment_filename", segmentFilePattern,
 		"-vn", m3u8FileName,
 	)
@@ -216,7 +211,7 @@ func (t *Transcoder) transcodeMp3ToHls() (string, error) {
 		return "", err
 	}
 
-	if err := t.updateStatus(80); err != nil {
+	if err := t.updateStatus(80, ""); err != nil {
 		panic(err)
 	}
 
@@ -225,7 +220,7 @@ func (t *Transcoder) transcodeMp3ToHls() (string, error) {
 		return "", err
 	}
 
-	if err := t.updateStatus(100); err != nil {
+	if err := t.updateStatus(100, hlsCid); err != nil {
 		panic(err)
 	}
 
