@@ -75,14 +75,13 @@ func uploadAudioHandler(bs *bstudio.BStudio) http.HandlerFunc {
 
 		// save original file
 		cid, err := upload.StoreOriginal()
-		log.Info().Str("cid: ", cid).Msg("stored file name " + header.Filename)
-
 		if err != nil {
 			//uploader.RemoveAll()
-			log.Error().Str("filename", header.Filename).Msg("Cannot save audio file.")
-			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("Cannot save audio file %s", header.Filename)))
+			log.Error().Str("filename", header.Filename).Msg("Cannot move audio file to ipfs")
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("Cannot move audio file to ipfs %s", header.Filename)))
 			return
 		}
+		log.Info().Str("cid: ", cid).Msg("stored file name " + header.Filename)
 
 		// check file size
 		// check duration
