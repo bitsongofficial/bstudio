@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/bitsongofficial/bstudio/bstudio"
+	"github.com/bitsongofficial/bstudio/database"
 	"github.com/bitsongofficial/bstudio/server"
 	"github.com/gorilla/mux"
 	shell "github.com/ipfs/go-ipfs-api"
@@ -68,14 +69,21 @@ func getStartCmd() *cobra.Command {
 				}
 			}
 
+			// Connect Database
+			db := database.NewDatabase("mongodb://localhost:27017/?replicaSet=replica01", "bstudio")
+			err, cancel := db.Init()
+			defer cancel()
+			if err != nil {
+				return err
+			}
+
 			// Start IPFS Shell
 			sh := shell.NewShell(ipfsAddr)
 			if !sh.IsUp() {
 				return fmt.Errorf("ipfs api is down!")
 			}
 
-			bs := bstudio.NewBStudio(sh)
-			defer bs.Ds.Db.Close()
+			bs := bstudio.NewBStudio(db, sh)
 
 			var wg sync.WaitGroup
 			wg.Add(1)

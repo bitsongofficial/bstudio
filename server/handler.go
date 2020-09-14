@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/bitsongofficial/bstudio/bstudio"
+	"github.com/bitsongofficial/bstudio/models"
 	_ "github.com/bitsongofficial/bstudio/server/docs"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -12,6 +13,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 )
 
 const (
@@ -29,7 +31,7 @@ func RegisterRoutes(r *mux.Router, bs *bstudio.BStudio) {
 }
 
 type UploadCidResp struct {
-	CID      string `json:"cid"`
+	Uid      string `json:"uid"`
 	FileName string `json:"filename"`
 }
 
@@ -60,7 +62,8 @@ func uploadAudioHandler(bs *bstudio.BStudio) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		upload := bstudio.NewUpload(bs, header, file)
+		uid := uuid.New().String()
+		upload := bstudio.NewUpload(bs, header, file, uid)
 		log.Info().Str("filename", header.Filename).Msg("handling audio upload...")
 
 		// check if the file is audio
@@ -83,13 +86,30 @@ func uploadAudioHandler(bs *bstudio.BStudio) http.HandlerFunc {
 		}
 		log.Info().Str("cid: ", cid).Msg("stored file name " + header.Filename)
 
+		// insert upload to db
+		var mUpload models.Upload
+		//mUpload.ID = primitive.NewObjectID()
+		mUpload.Uid = uid
+		mUpload.OriginalCid = cid
+		mUpload.Filename = header.Filename
+		mUpload.Status = "queued"
+		mUpload.CreatedAt = time.Now()
+		mUpload.UpdatedAt = time.Now()
+
+		id, err := bs.Db.InsertOne(bs.Db.UploadCollection, mUpload)
+		if err != nil {
+			log.Error().Str("filename", header.Filename).Msg("Failed to insert a new record to mongodb")
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("failed to initialize file"))
+			return
+		}
+
 		// check file size
 		// check duration
-		ts := bstudio.NewTranscoder(bs, cid)
+		ts := bstudio.NewTranscoder(bs, cid, id)
 		bs.TQueue <- ts
 
 		res := UploadCidResp{
-			CID:      cid,
+			Uid:      uid,
 			FileName: header.Filename,
 		}
 
@@ -157,7 +177,7 @@ func uploadImageHandler(bs *bstudio.BStudio) http.HandlerFunc {
 		}
 
 		res := UploadCidResp{
-			CID: cid,
+			Uid: cid,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -205,7 +225,7 @@ func uploadManifestHandler(bs *bstudio.BStudio) http.HandlerFunc {
 		}
 
 		res := UploadCidResp{
-			CID: cid,
+			Uid: cid,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

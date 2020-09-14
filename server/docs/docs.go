@@ -199,10 +199,10 @@ var doc = `{
         "server.UploadCidResp": {
             "type": "object",
             "properties": {
-                "cid": {
+                "filename": {
                     "type": "string"
                 },
-                "filename": {
+                "uid": {
                     "type": "string"
                 }
             }

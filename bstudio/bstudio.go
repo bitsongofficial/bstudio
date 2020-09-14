@@ -1,6 +1,7 @@
 package bstudio
 
 import (
+	"github.com/bitsongofficial/bstudio/database"
 	shell "github.com/ipfs/go-ipfs-api"
 	"io"
 )
@@ -12,17 +13,13 @@ const (
 type BStudio struct {
 	sh     *shell.Shell
 	TQueue chan *Transcoder
-	Ds     *Ds
+	Db     *database.Database
 }
 
-func NewBStudio(sh *shell.Shell) *BStudio {
-	// Create datastore
-	ds := NewDs()
-	//defer ds.Db.Close()
-
+func NewBStudio(db *database.Database, sh *shell.Shell) *BStudio {
 	return &BStudio{
+		Db:     db,
 		sh:     sh,
-		Ds:     ds,
 		TQueue: make(chan *Transcoder, maxTranscoderQueue),
 	}
 }
@@ -42,7 +39,8 @@ func (bs *BStudio) StartTranscoding() {
 	}
 }
 func (bs *BStudio) GetTranscodingStatus(cid string) ([]byte, error) {
-	return bs.Ds.Get([]byte(cid))
+	//return bs.Ds.Get([]byte(cid))
+	return nil, nil
 }
 
 func (bs *BStudio) Subscribe() (*shell.PubSubSubscription, error) {

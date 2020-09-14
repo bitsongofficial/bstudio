@@ -13,9 +13,9 @@ definitions:
     type: object
   server.UploadCidResp:
     properties:
-      cid:
-        type: string
       filename:
+        type: string
+      uid:
         type: string
     type: object
   server.UploadStatusResp:

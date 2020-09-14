@@ -2,17 +2,20 @@ package bstudio
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
+	"github.com/bitsongofficial/bstudio/models"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"time"
 )
 
 type Transcoder struct {
 	bs     *BStudio
 	cid    string
 	mp3Cid string
+	id     primitive.ObjectID
 }
 type TranscodeResult struct {
 	mp3Cid string
@@ -25,8 +28,8 @@ type TranscodeStatus struct {
 	Percentage uint   `json:"percentage"`
 }
 
-func NewTranscoder(bs *BStudio, cid string) *Transcoder {
-	return &Transcoder{bs: bs, cid: cid}
+func NewTranscoder(bs *BStudio, cid string, id primitive.ObjectID) *Transcoder {
+	return &Transcoder{bs: bs, cid: cid, id: id}
 }
 
 func (t *Transcoder) GetCidDuration() (float32, error) {
@@ -43,24 +46,6 @@ func (t *Transcoder) GetCidDuration() (float32, error) {
 	return ffprobe.GetDuration(), err
 }
 func (t *Transcoder) Transcode() (*TranscodeResult, error) {
-	// create record into badger
-	data := TranscodeStatus{
-		Cid:        t.cid,
-		Percentage: 0,
-	}
-	dataBz, err := json.Marshal(data)
-	if err != nil {
-		return &TranscodeResult{}, err
-	}
-
-	// save initial status
-	if err = t.bs.Ds.SetAndCommit([]byte(t.cid), dataBz); err != nil {
-		panic(err)
-		return &TranscodeResult{}, err
-	}
-
-	// switch type transcoding audio/video
-	// case:
 	// transcode to mp3
 	cid, err := t.transcodeCidToMp3()
 	if err != nil {
@@ -81,31 +66,28 @@ func (t *Transcoder) Transcode() (*TranscodeResult, error) {
 }
 
 func (t *Transcoder) updateStatus(percentage uint, hlsCid string) error {
-	dataBz, err := t.bs.Ds.Get([]byte(t.cid))
-	if err != nil {
-		return err
+	var mUpload models.Upload
+	mUpload.Percentage = percentage
+	if percentage < 100 {
+		mUpload.Status = "processing"
+	} else {
+		mUpload.Status = "completed"
 	}
-
-	var status TranscodeStatus
-	if err := json.Unmarshal(dataBz, &status); err != nil {
-		return err
-	}
-	status.Percentage = percentage
 	if hlsCid != "" {
-		status.HlsCid = hlsCid
+		mUpload.HlsCid = hlsCid
 	}
+	mUpload.UpdatedAt = time.Now()
 
-	dataBz, err = json.Marshal(status)
+	data, err := t.bs.Db.DecodeStruct(mUpload)
 	if err != nil {
 		return err
 	}
 
-	err = t.bs.Ds.SetAndCommit([]byte(t.cid), dataBz)
-	if err != nil {
-		return err
+	if err := t.bs.Db.UpdateOne(t.bs.Db.UploadCollection, t.id, data); err != nil {
+		panic(err)
 	}
 
-	return err
+	return nil
 }
 
 func (t *Transcoder) getCid() (*string, error) {

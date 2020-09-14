@@ -6,10 +6,12 @@ type Upload struct {
 	header *multipart.FileHeader
 	file   multipart.File
 	bs     *BStudio
+	uid    string
 }
 
-func NewUpload(bs *BStudio, h *multipart.FileHeader, f multipart.File) *Upload {
+func NewUpload(bs *BStudio, h *multipart.FileHeader, f multipart.File, uid string) *Upload {
 	return &Upload{
+		uid:    uid,
 		header: h,
 		file:   f,
 		bs:     bs,
