@@ -9,8 +9,8 @@ import (
 type ffProbeFormat struct {
 	StreamsCount int32   `json:"nb_streams"`
 	Format       string  `json:"format_name"`
-	Duration     float32 `json:"duration,string"`
-	Start        float32 `json:"start,string"`
+	Duration     float64 `json:"duration,string"`
+	Start        float64 `json:"start,string"`
 	Size         int64   `json:"size,string"`
 }
 
@@ -56,6 +56,6 @@ func NewFFProbe(path string) (*ffProbe, error) {
 	return out, err
 }
 
-func (f *ffProbe) GetDuration() float32 {
+func (f *ffProbe) GetDuration() float64 {
 	return f.Format.Duration
 }

@@ -136,7 +136,7 @@ var doc = `{
                 }
             }
         },
-        "/upload/{cid}/status": {
+        "/upload/{uid}/status": {
             "get": {
                 "description": "Get upload status by ID.",
                 "produces": [
@@ -149,8 +149,8 @@ var doc = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "CID",
-                        "name": "cid",
+                        "description": "UID",
+                        "name": "uid",
                         "in": "path",
                         "required": true
                     }

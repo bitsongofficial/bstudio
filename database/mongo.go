@@ -71,8 +71,8 @@ func (db *Database) InsertOne(collection *mongo.Collection, model interface{}) (
 	return id.InsertedID.(primitive.ObjectID), nil
 }
 
-func (db *Database) UpdateOne(collection *mongo.Collection, id primitive.ObjectID, update bson.M) error {
-	res, err := collection.UpdateOne(context.Background(), bson.M{"_id": id}, bson.M{"$set": update})
+func (db *Database) UpdateOne(collection *mongo.Collection, uid string, update bson.M) error {
+	res, err := collection.UpdateOne(context.Background(), bson.M{"uid": uid}, bson.M{"$set": update})
 	if err != nil || res.ModifiedCount == 0 {
 		return errors.New("mongo: no documents in result")
 	}
@@ -80,7 +80,7 @@ func (db *Database) UpdateOne(collection *mongo.Collection, id primitive.ObjectI
 	return nil
 }
 
-func (db *Database) DecodeStruct(s interface{}) (bson.M, error) {
+func DecodeStruct(s interface{}) (bson.M, error) {
 	// Creating a bson.M variable
 	var decoded bson.M
 

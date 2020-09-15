@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog/log"
 	httpswagger "github.com/swaggo/http-swagger"
+	"go.mongodb.org/mongo-driver/bson"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -27,7 +28,7 @@ func RegisterRoutes(r *mux.Router, bs *bstudio.BStudio) {
 	r.HandleFunc("/api/v1/upload/audio", uploadAudioHandler(bs)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/image", uploadImageHandler(bs)).Methods(methodPOST)
 	r.HandleFunc("/api/v1/upload/manifest", uploadManifestHandler(bs)).Methods(methodPOST)
-	r.HandleFunc("/api/v1/upload/{cid}/status", uploadStatusHandler(bs)).Methods(methodGET)
+	r.HandleFunc("/api/v1/upload/{uid}/status", uploadStatusHandler(bs)).Methods(methodGET)
 }
 
 type UploadCidResp struct {
@@ -62,41 +63,35 @@ func uploadAudioHandler(bs *bstudio.BStudio) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		uid := uuid.New().String()
-		upload := bstudio.NewUpload(bs, header, file, uid)
+		upload := bstudio.NewUpload(header, file)
 		log.Info().Str("filename", header.Filename).Msg("handling audio upload...")
 
 		// check if the file is audio
 		log.Info().Str("filename", header.Filename).Msg("check if the file is audio")
 		if !upload.IsAudio() {
-			//uploader.RemoveAll()
-
 			log.Error().Str("content-type", upload.GetContentType()).Msg("Wrong content type")
 			writeJSONResponse(w, http.StatusUnsupportedMediaType, newErrorJson(fmt.Sprintf("Wrong content type: %s", upload.GetContentType())))
 			return
 		}
 
 		// save original file
-		cid, err := upload.StoreOriginal()
-		if err != nil {
-			//uploader.RemoveAll()
-			log.Error().Str("filename", header.Filename).Msg("Cannot move audio file to ipfs")
-			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("Cannot move audio file to ipfs %s", header.Filename)))
+		if err := upload.SaveOriginal(bs.HomeDir); err != nil {
+			log.Error().Str("filename", header.Filename).Msg("Cannot save the audio file")
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("Cannot save the audio file %s", header.Filename)))
 			return
 		}
-		log.Info().Str("cid: ", cid).Msg("stored file name " + header.Filename)
+		log.Info().Str("filename: ", header.Filename).Msg("stored original file")
 
 		// insert upload to db
 		var mUpload models.Upload
-		//mUpload.ID = primitive.NewObjectID()
-		mUpload.Uid = uid
-		mUpload.OriginalCid = cid
-		mUpload.Filename = header.Filename
-		mUpload.Status = "queued"
+		mUpload.Uid = upload.GetID()
+		mUpload.Filename = upload.GetName()
+		mUpload.Status = models.UPLOAD_STATUS_PENDING
+		mUpload.Size = upload.GetSize()
 		mUpload.CreatedAt = time.Now()
 		mUpload.UpdatedAt = time.Now()
 
-		id, err := bs.Db.InsertOne(bs.Db.UploadCollection, mUpload)
+		_, err = bs.Db.InsertOne(bs.Db.UploadCollection, mUpload)
 		if err != nil {
 			log.Error().Str("filename", header.Filename).Msg("Failed to insert a new record to mongodb")
 			writeJSONResponse(w, http.StatusBadRequest, newErrorJson("failed to initialize file"))
@@ -105,25 +100,23 @@ func uploadAudioHandler(bs *bstudio.BStudio) http.HandlerFunc {
 
 		// check file size
 		// check duration
-		ts := bstudio.NewTranscoder(bs, cid, id)
+		ts := bstudio.NewTranscoder(bs, upload.GetID(), upload.GetName())
 		bs.TQueue <- ts
 
 		res := UploadCidResp{
-			Uid:      uid,
+			Uid:      upload.GetID(),
 			FileName: header.Filename,
 		}
 
 		bz, err := json.Marshal(res)
 		if err != nil {
-			//uploader.RemoveAll()
-
 			log.Error().Str("filename", header.Filename).Msg("Failed to encode response")
 			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("failed to encode response: %s", err.Error())))
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(bz)
+		w.Write(bz)
 	}
 }
 
@@ -237,25 +230,27 @@ func uploadManifestHandler(bs *bstudio.BStudio) http.HandlerFunc {
 // @Description Get upload status by ID.
 // @Tags upload
 // @Produce json
-// @Param cid path string true "CID"
+// @Param uid path string true "UID"
 // @Success 200 {object} server.UploadStatusResp
 // @Failure 400 {object} server.ErrorJson "Failure to parse the id"
 // @Failure 404 {object} server.ErrorJson to find the id"
-// @Router /upload/{cid}/status [get]
+// @Router /upload/{uid}/status [get]
 func uploadStatusHandler(bs *bstudio.BStudio) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var params = mux.Vars(r)
-		res, err := bs.GetTranscodingStatus(params["cid"])
+		status, err := bs.Db.FindOne(bs.Db.UploadCollection, bson.M{"uid": params["uid"]})
 		if err != nil {
 			writeJSONResponse(w, http.StatusInternalServerError, newErrorJson(fmt.Sprintf("Cannot get transcode status: %s", err)))
 			return
 		}
 
-		var status bstudio.TranscodeStatus
-		err = json.Unmarshal(res, &status)
+		bz, err := json.Marshal(status)
+		if err != nil {
+			writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("failed to encode response: %s", err.Error())))
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(status)
-
+		w.Write(bz)
 	}
 }

@@ -37,13 +37,13 @@ info:
   title: BStudio API Docs
   version: "0.1"
 paths:
-  /upload/{cid}/status:
+  /upload/{uid}/status:
     get:
       description: Get upload status by ID.
       parameters:
-      - description: CID
+      - description: UID
         in: path
-        name: cid
+        name: uid
         required: true
         type: string
       produces:

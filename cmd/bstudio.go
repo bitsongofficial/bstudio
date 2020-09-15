@@ -83,7 +83,7 @@ func getStartCmd() *cobra.Command {
 				return fmt.Errorf("ipfs api is down!")
 			}
 
-			bs := bstudio.NewBStudio(db, sh)
+			bs := bstudio.NewBStudio(db, sh, DefaultStudioHome)
 
 			var wg sync.WaitGroup
 			wg.Add(1)

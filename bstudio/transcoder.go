@@ -3,69 +3,85 @@ package bstudio
 import (
 	"bytes"
 	"fmt"
+	"github.com/bitsongofficial/bstudio/database"
 	"github.com/bitsongofficial/bstudio/models"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"io/ioutil"
+	"github.com/rs/zerolog/log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
+func generatePath(homedir, prefix, uid, filename string) string {
+	return fmt.Sprintf("%s/%s/%s/%s", homedir, prefix, uid, filename)
+}
+
 type Transcoder struct {
-	bs     *BStudio
-	cid    string
-	mp3Cid string
-	id     primitive.ObjectID
-}
-type TranscodeResult struct {
-	mp3Cid string
-	hlsCid string
+	bs       *BStudio
+	uid      string
+	filename string
 }
 
-type TranscodeStatus struct {
-	Cid        string `json:"cid"`
-	HlsCid     string `json:"hls_cid"`
-	Percentage uint   `json:"percentage"`
+func NewTranscoder(bs *BStudio, uid, filename string) *Transcoder {
+	return &Transcoder{bs: bs, uid: uid, filename: filename}
 }
 
-func NewTranscoder(bs *BStudio, cid string, id primitive.ObjectID) *Transcoder {
-	return &Transcoder{bs: bs, cid: cid, id: id}
-}
-
-func (t *Transcoder) GetCidDuration() (float32, error) {
-	tmpPath, err := t.getCid()
-	if err != nil {
-		return 0, err
-	}
-
-	ffprobe, err := NewFFProbe(*tmpPath)
+func (t *Transcoder) GetDuration(mp3Path string) (float64, error) {
+	ffprobe, err := NewFFProbe(mp3Path)
 	if err != nil {
 		return 0, err
 	}
 
 	return ffprobe.GetDuration(), err
 }
-func (t *Transcoder) Transcode() (*TranscodeResult, error) {
+
+func (t *Transcoder) Transcode() error {
 	// transcode to mp3
-	cid, err := t.transcodeCidToMp3()
+	mp3Path, err := t.transcodeToMp3()
 	if err != nil {
-		return &TranscodeResult{}, err
+		return err
 	}
-	t.mp3Cid = cid
+
+	// get and save duration
+	duration, err := t.GetDuration(*mp3Path)
+	if err != nil {
+		log.Error().Str("get duration failed: ", t.uid).Msg(err.Error())
+		return err
+	}
 
 	// generate hls
-	cid, err = t.transcodeMp3ToHls()
+	err = t.transcodeMp3ToHls(*mp3Path)
 	if err != nil {
-		return &TranscodeResult{}, err
+		return err
 	}
 
-	return &TranscodeResult{
-		mp3Cid: t.mp3Cid,
-		hlsCid: cid,
-	}, err
+	cid, err := t.bs.AddDir(fmt.Sprintf("%s/hls/%s", t.bs.HomeDir, t.uid))
+	if err != nil {
+		log.Error().Str("add dir failed: ", t.uid).Msg(err.Error())
+		return err
+	}
+
+	var mUpload models.Upload
+	mUpload.Duration = duration
+	mUpload.Hls = cid
+	mUpload.UpdatedAt = time.Now()
+	data, err := database.DecodeStruct(mUpload)
+	if err != nil {
+		return err
+	}
+
+	if err := t.bs.Db.UpdateOne(t.bs.Db.UploadCollection, t.uid, data); err != nil {
+		panic(err)
+	}
+
+	if err := t.updateStatus(100); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (t *Transcoder) updateStatus(percentage uint, hlsCid string) error {
+func (t *Transcoder) updateStatus(percentage uint) error {
 	var mUpload models.Upload
 	mUpload.Percentage = percentage
 	if percentage < 100 {
@@ -73,105 +89,95 @@ func (t *Transcoder) updateStatus(percentage uint, hlsCid string) error {
 	} else {
 		mUpload.Status = "completed"
 	}
-	if hlsCid != "" {
-		mUpload.HlsCid = hlsCid
-	}
 	mUpload.UpdatedAt = time.Now()
 
-	data, err := t.bs.Db.DecodeStruct(mUpload)
+	data, err := database.DecodeStruct(mUpload)
 	if err != nil {
 		return err
 	}
 
-	if err := t.bs.Db.UpdateOne(t.bs.Db.UploadCollection, t.id, data); err != nil {
+	if err := t.bs.Db.UpdateOne(t.bs.Db.UploadCollection, t.uid, data); err != nil {
 		panic(err)
 	}
+
+	log.Info().Str("update status: ", t.uid).Msg(fmt.Sprintf("%d%%", percentage))
 
 	return nil
 }
 
-func (t *Transcoder) getCid() (*string, error) {
-	tmpPath := fmt.Sprintf("/tmp/%s", t.cid)
-	err := t.bs.Get(t.cid, tmpPath)
-	if err != nil {
+func (t *Transcoder) transcodeToMp3() (*string, error) {
+	if err := t.updateStatus(5); err != nil {
 		return nil, err
 	}
 
-	return &tmpPath, err
-}
-func (t *Transcoder) transcodeCidToMp3() (string, error) {
-	tmpPath, err := t.getCid()
-	if err != nil {
-		return "", err
+	// create mp3 dir
+	if _, err := os.Stat(fmt.Sprintf("%s/mp3", t.bs.HomeDir)); os.IsNotExist(err) {
+		if err := os.Mkdir(fmt.Sprintf("%s/mp3", t.bs.HomeDir), os.ModePerm); err != nil {
+			return nil, err
+		}
 	}
 
-	if err := t.updateStatus(5, ""); err != nil {
-		panic(err)
+	if _, err := os.Stat(fmt.Sprintf("%s/mp3/%s", t.bs.HomeDir, t.uid)); os.IsNotExist(err) {
+		if err := os.Mkdir(fmt.Sprintf("%s/mp3/%s", t.bs.HomeDir, t.uid), os.ModePerm); err != nil {
+			return nil, err
+		}
 	}
 
-	outTmpPath := *tmpPath + ".mp3"
+	oldPath := generatePath(t.bs.HomeDir, "original", t.uid, t.filename)
+	extension := filepath.Ext(t.filename)
+	newFilename := t.filename[0:len(t.filename)-len(extension)] + ".mp3"
+	newPath := generatePath(t.bs.HomeDir, "mp3", t.uid, newFilename)
 
-	cmd := exec.Command(
-		"ffmpeg",
-		"-i",
-		*tmpPath,
-		"-acodec",
-		"libmp3lame",
-		"-ar",
-		"48000",
-		"-b:a",
-		"320k",
-		"-y",
-		outTmpPath,
+	cmd := exec.Command("ffmpeg",
+		"-i", oldPath,
+		"-acodec", "libmp3lame",
+		"-ar", "48000",
+		"-b:a", "320k",
+		"-y", newPath,
 	)
 
 	var ffmpegStdErr bytes.Buffer
 	cmd.Stderr = &ffmpegStdErr
 
-	err = cmd.Run()
+	log.Info().Str("mp3 conversion: ", t.uid).Msg("start conversion")
+	err := cmd.Run()
 	if err != nil {
-		//log.Print("FFMpeg error ", err)
-		//log.Print(string(ffmpegStdErr.Bytes()))
+		log.Error().Str("transcodeToMp3 failed: ", t.uid).Msg(err.Error())
+		return nil, err
+	}
+	log.Info().Str("mp3 conversion: ", t.uid).Msg("end conversion")
 
-		return "", err
+	if err := t.updateStatus(30); err != nil {
+		return nil, err
 	}
 
-	_, err = ioutil.ReadFile(outTmpPath)
-	if err != nil {
-		return "", err
-	}
-
-	f, _ := os.Open(outTmpPath)
-
-	if err := t.updateStatus(30, ""); err != nil {
-		panic(err)
-	}
-
-	return t.bs.Add(f)
+	return &newPath, nil
 }
-func (t *Transcoder) transcodeMp3ToHls() (string, error) {
-	tmpMp3Path := fmt.Sprintf("/tmp/%s.mp3", t.cid)
+func (t *Transcoder) transcodeMp3ToHls(mp3Path string) error {
 	// TODO: check if file exist
 
-	// create tmp hls dir
-	tmpHlsPath := fmt.Sprintf("/tmp/%s-hls", t.cid)
-	if _, err := os.Stat(tmpHlsPath); os.IsNotExist(err) {
-		err = os.MkdirAll(tmpHlsPath, 0755)
-		if err != nil {
-			return "", err
+	// create hls dir
+	if _, err := os.Stat(fmt.Sprintf("%s/hls", t.bs.HomeDir)); os.IsNotExist(err) {
+		if err := os.Mkdir(fmt.Sprintf("%s/hls", t.bs.HomeDir), os.ModePerm); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(fmt.Sprintf("%s/hls/%s", t.bs.HomeDir, t.uid)); os.IsNotExist(err) {
+		if err := os.Mkdir(fmt.Sprintf("%s/hls/%s", t.bs.HomeDir, t.uid), os.ModePerm); err != nil {
+			return err
 		}
 	}
 
-	segmentFilePattern := tmpHlsPath + "/segment%03d.ts"
-	m3u8FileName := tmpHlsPath + "/playlist.m3u8"
+	newPath := generatePath(t.bs.HomeDir, "hls", t.uid, "playlist.m3u8")
+	segmentFilePattern := generatePath(t.bs.HomeDir, "hls", t.uid, "segment%03d.ts")
 
-	if err := t.updateStatus(40, ""); err != nil {
+	if err := t.updateStatus(40); err != nil {
 		panic(err)
 	}
 
-	cmd := exec.Command(
-		"ffmpeg",
-		"-i", tmpMp3Path,
+	log.Info().Str("hls conversion: ", t.uid).Msg("start conversion")
+	cmd := exec.Command("ffmpeg",
+		"-i", mp3Path,
 		"-ar", "48000", // sample rate
 		"-b:a", "320k", // bitrate
 		"-hls_time", "5", // 5s for each segment
@@ -179,7 +185,7 @@ func (t *Transcoder) transcodeMp3ToHls() (string, error) {
 		"-hls_list_size", "0", //  If set to 0 the list file will contain all the segments
 		//"-hls_base_url", "segments/",
 		"-hls_segment_filename", segmentFilePattern,
-		"-vn", m3u8FileName,
+		"-vn", newPath,
 	)
 
 	var ffmpegStdErr bytes.Buffer
@@ -187,24 +193,14 @@ func (t *Transcoder) transcodeMp3ToHls() (string, error) {
 
 	err := cmd.Run()
 	if err != nil {
-		//log.Print("FFMpeg error ", err)
-		//log.Print(string(ffmpegStdErr.Bytes()))
+		log.Error().Str("transcodeToHls failed: ", t.uid).Msg(err.Error())
+		return err
+	}
+	log.Info().Str("mp3 conversion: ", t.uid).Msg("end conversion")
 
-		return "", err
+	if err := t.updateStatus(80); err != nil {
+		return err
 	}
 
-	if err := t.updateStatus(80, ""); err != nil {
-		panic(err)
-	}
-
-	hlsCid, err := t.bs.AddDir(tmpHlsPath)
-	if err != nil {
-		return "", err
-	}
-
-	if err := t.updateStatus(100, hlsCid); err != nil {
-		panic(err)
-	}
-
-	return hlsCid, err
+	return err
 }
