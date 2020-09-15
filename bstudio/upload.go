@@ -1,7 +1,9 @@
 package bstudio
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/dhowden/tag"
 	"github.com/google/uuid"
 	"io"
 	"mime/multipart"
@@ -12,11 +14,13 @@ type Upload struct {
 	header *multipart.FileHeader
 	file   multipart.File
 	uid    string
+	bs     *BStudio
 }
 
-func NewUpload(h *multipart.FileHeader, f multipart.File) *Upload {
+func NewUpload(bs *BStudio, h *multipart.FileHeader, f multipart.File) *Upload {
 	return &Upload{
 		uid:    uuid.New().String(),
+		bs:     bs,
 		header: h,
 		file:   f,
 	}
@@ -78,4 +82,51 @@ func (u *Upload) SaveOriginal(path string) error {
 	io.Copy(f, u.GetFile())
 
 	return nil
+}
+
+func (u *Upload) SavePicture(data []byte) (string, error) {
+	return u.bs.sh.Add(bytes.NewReader(data))
+}
+
+func (u *Upload) GetMetadata(path string) (map[string]interface{}, error) {
+	f, err := os.Open(fmt.Sprintf("%s/original/%s/%s", path, u.GetID(), u.header.Filename))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	metadata, err := tag.ReadFrom(f)
+	if err != nil {
+		return nil, err
+	}
+
+	trackNr, trackNrOf := metadata.Track()
+	discNr, discNrOf := metadata.Disc()
+
+	var picture string
+	if metadata.Picture() != nil {
+		pictureCid, err := u.SavePicture(metadata.Picture().Data)
+		if err == nil {
+			picture = pictureCid
+		}
+	}
+
+	return map[string]interface{}{
+		"title":        metadata.Title(),
+		"artist":       metadata.Artist(),
+		"track":        trackNr,
+		"track_of":     trackNrOf,
+		"album":        metadata.Album(),
+		"album_artist": metadata.AlbumArtist(),
+		"comment":      metadata.Comment(),
+		"composer":     metadata.Composer(),
+		"disc":         discNr,
+		"disc_of":      discNrOf,
+		"file_type":    metadata.FileType(),
+		"format":       metadata.Format(),
+		"genre":        metadata.Genre(),
+		"lyrics":       metadata.Lyrics(),
+		"picture":      picture,
+		"year":         metadata.Year(),
+	}, nil
 }

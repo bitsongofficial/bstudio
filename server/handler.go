@@ -63,7 +63,7 @@ func uploadAudioHandler(bs *bstudio.BStudio) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		upload := bstudio.NewUpload(header, file)
+		upload := bstudio.NewUpload(bs, header, file)
 		log.Info().Str("filename", header.Filename).Msg("handling audio upload...")
 
 		// check if the file is audio
@@ -82,12 +82,21 @@ func uploadAudioHandler(bs *bstudio.BStudio) http.HandlerFunc {
 		}
 		log.Info().Str("filename: ", header.Filename).Msg("stored original file")
 
+		// get metadata
+		metadata, err := upload.GetMetadata(bs.HomeDir)
+		if err != nil {
+			log.Error().Str("filename", header.Filename).Msg(fmt.Sprintf("Cannot parse metadata: %s", err.Error()))
+			//writeJSONResponse(w, http.StatusBadRequest, newErrorJson(fmt.Sprintf("Cannot parse metadata %s", header.Filename)))
+			//return
+		}
+
 		// insert upload to db
 		var mUpload models.Upload
 		mUpload.Uid = upload.GetID()
 		mUpload.Filename = upload.GetName()
 		mUpload.Status = models.UPLOAD_STATUS_PENDING
 		mUpload.Size = upload.GetSize()
+		mUpload.Metadata = metadata
 		mUpload.CreatedAt = time.Now()
 		mUpload.UpdatedAt = time.Now()
 

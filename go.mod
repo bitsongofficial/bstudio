@@ -7,6 +7,7 @@ require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/aws/aws-sdk-go v1.34.22 // indirect
 	github.com/dgraph-io/badger v1.6.0
+	github.com/dhowden/tag v0.0.0-20200828214007-46e57f75dbfc // indirect
 	github.com/go-openapi/spec v0.19.6 // indirect
 	github.com/go-openapi/swag v0.19.7 // indirect
 	github.com/golang/protobuf v1.3.2 // indirect
