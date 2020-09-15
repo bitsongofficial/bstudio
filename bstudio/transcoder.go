@@ -180,7 +180,7 @@ func (t *Transcoder) transcodeMp3ToHls(mp3Path string) error {
 		"-i", mp3Path,
 		"-ar", "48000", // sample rate
 		"-b:a", "320k", // bitrate
-		"-hls_time", "5", // 5s for each segment
+		"-hls_time", "30", // 30s for each segment
 		"-hls_segment_type", "mpegts", // hls segment type: Output segment files in MPEG-2 Transport Stream format. This is compatible with all HLS versions.
 		"-hls_list_size", "0", //  If set to 0 the list file will contain all the segments
 		//"-hls_base_url", "segments/",
