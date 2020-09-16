@@ -74,19 +74,26 @@ func (t *Transcoder) Transcode() error {
 		panic(err)
 	}
 
-	if err := t.updateStatus(100); err != nil {
+	if err := t.updateStatus(100, ""); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (t *Transcoder) updateStatus(percentage uint) error {
+func (t *Transcoder) updateStatus(percentage uint, logErr string) error {
 	var mUpload models.Upload
 	mUpload.Percentage = percentage
-	if percentage < 100 {
+	if percentage < 100 && logErr == "" {
 		mUpload.Status = "processing"
-	} else {
+	}
+
+	if percentage < 100 && logErr != "" {
+		mUpload.Status = "error"
+		mUpload.LogError = logErr
+	}
+
+	if percentage == 100 {
 		mUpload.Status = "completed"
 	}
 	mUpload.UpdatedAt = time.Now()
@@ -106,7 +113,7 @@ func (t *Transcoder) updateStatus(percentage uint) error {
 }
 
 func (t *Transcoder) transcodeToMp3() (*string, error) {
-	if err := t.updateStatus(5); err != nil {
+	if err := t.updateStatus(5, ""); err != nil {
 		return nil, err
 	}
 
@@ -142,12 +149,13 @@ func (t *Transcoder) transcodeToMp3() (*string, error) {
 	log.Info().Str("mp3 conversion: ", t.uid).Msg("start conversion")
 	err := cmd.Run()
 	if err != nil {
+		t.updateStatus(5, "transcodeToMp3 failed")
 		log.Error().Str("transcodeToMp3 failed: ", t.uid).Msg(err.Error())
 		return nil, err
 	}
 	log.Info().Str("mp3 conversion: ", t.uid).Msg("end conversion")
 
-	if err := t.updateStatus(30); err != nil {
+	if err := t.updateStatus(30, ""); err != nil {
 		return nil, err
 	}
 
@@ -171,7 +179,7 @@ func (t *Transcoder) transcodeMp3ToHls(mp3Path string) error {
 	newPath := generatePath(t.bs.HomeDir, "hls", t.uid, "playlist.m3u8")
 	segmentFilePattern := generatePath(t.bs.HomeDir, "hls", t.uid, "segment%03d.ts")
 
-	if err := t.updateStatus(40); err != nil {
+	if err := t.updateStatus(40, ""); err != nil {
 		panic(err)
 	}
 
@@ -193,12 +201,13 @@ func (t *Transcoder) transcodeMp3ToHls(mp3Path string) error {
 
 	err := cmd.Run()
 	if err != nil {
+		t.updateStatus(40, "transcodeToMp3 failed")
 		log.Error().Str("transcodeToHls failed: ", t.uid).Msg(err.Error())
 		return err
 	}
 	log.Info().Str("mp3 conversion: ", t.uid).Msg("end conversion")
 
-	if err := t.updateStatus(80); err != nil {
+	if err := t.updateStatus(80, ""); err != nil {
 		return err
 	}
 

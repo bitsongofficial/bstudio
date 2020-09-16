@@ -9,6 +9,7 @@ type Upload struct {
 	Uid         string                 `bson:"uid,omitempty" json:"uid" validate:"required"`
 	Filename    string                 `bson:"filename,omitempty" json:"filename" validate:"required"`
 	Status      string                 `bson:"status,omitempty" json:"status" validate:"required"`
+	LogError    string                 `bson:"log_error,omitempty" json:"log_error"`
 	Size        int64                  `bson:"size,omitempty" json:"size" validate:"required"`
 	Duration    float64                `bson:"duration,omitempty" json:"duration"`
 	Percentage  uint                   `bson:"percentage,omitempty" json:"percentage" validate:"required"`
